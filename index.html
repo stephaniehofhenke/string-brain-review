@@ -5,200 +5,196 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>STRING Brain</title>
   <style>
-    /* ── Design tokens — STRING brand ── */
+    /* ── Tokens ── */
     :root {
-      --bg:       #F1EFE7;
-      --surface:  #FFFFFF;
-      --surface2: #F2EFDA;
-      --border:   rgba(52,52,62,0.1);
-      --text:     #34343E;
-      --text2:    #4A4A56;
-      --muted:    #8A8A96;
-      --accent:   #CCBE6D;
-      --accent-dark: #A89E50;
-      --green:    #34c759;
-      --red:      #B52025;
-      --orange:   #D4862A;
-      --blue:     #3BA9D0;
-      --teal:     #1C5967;
-      --r-card:   14px;
-      --r-btn:    12px;
-      --shadow:   0 2px 12px rgba(52,52,62,0.08);
-      --shadow-lg:0 8px 32px rgba(52,52,62,0.14);
-      --font: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Helvetica, Arial, sans-serif;
-      --trans: 0.18s cubic-bezier(0.25,0.46,0.45,0.94);
+      --bg:        #F1EFE7;
+      --surface:   #FFFFFF;
+      --surface2:  #F2EFDA;
+      --border:    rgba(52,52,62,0.09);
+      --text:      #34343E;
+      --text2:     #4A4A56;
+      --muted:     #8A8A96;
+      --gold:      #CCBE6D;
+      --gold-dark: #A89E50;
+      --red:       #B52025;
+      --blue:      #3BA9D0;
+      --teal:      #1C5967;
+      --r:         12px;
+      --shadow:    0 1px 8px rgba(52,52,62,0.07);
+      --shadow-md: 0 4px 20px rgba(52,52,62,0.11);
+      --font:      -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Helvetica, Arial, sans-serif;
+      --ease:      0.16s cubic-bezier(0.25,0.46,0.45,0.94);
     }
     @media (prefers-color-scheme: dark) {
       :root {
-        --bg:       #1C2830;
-        --surface:  #243540;
-        --surface2: #2C3E4C;
-        --border:   rgba(255,255,255,0.1);
+        --bg:       #181E22;
+        --surface:  #212C33;
+        --surface2: #283540;
+        --border:   rgba(255,255,255,0.08);
         --text:     #F1EFE7;
-        --text2:    rgba(241,239,231,0.75);
-        --muted:    #8e9ea8;
-        --accent:   #CCBE6D;
-        --accent-dark: #B8AA56;
-        --red:      #E84040;
+        --text2:    rgba(241,239,231,0.7);
+        --muted:    #7A8E98;
+        --gold:     #CCBE6D;
+        --gold-dark:#B8AA56;
+        --red:      #E04040;
         --blue:     #3BA9D0;
-        --teal:     #4DB8CC;
+        --teal:     #4DBCCC;
       }
     }
 
-    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
     html, body { height: 100%; overflow: hidden; font-family: var(--font); background: var(--bg); color: var(--text); }
 
-    /* ── Full-height layout ── */
+    /* ── Layout ── */
     #app    { height: 100vh; height: 100dvh; display: flex; flex-direction: column; }
     #screen { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; }
-    #screen.no-scroll { overflow: hidden; }
+    #screen.locked { overflow: hidden; }
 
-    /* ── Setup screen ── */
-    #setup { position: fixed; inset: 0; background: var(--bg); z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 24px; }
-    .setup-card { background: var(--surface); border-radius: 24px; padding: 32px 28px; max-width: 400px; width: 100%; box-shadow: var(--shadow-lg); }
-    .setup-logo { font-size: 28px; font-weight: 700; letter-spacing: -0.5px; margin-bottom: 6px; }
-    .setup-logo em { color: var(--accent); font-style: normal; }
-    .setup-sub  { color: var(--muted); font-size: 14px; margin-bottom: 28px; }
+    /* ── Setup ── */
+    #setup { position: fixed; inset: 0; background: var(--teal); z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 24px; }
+    .setup-card { background: var(--surface); border-radius: 20px; padding: 36px 28px; max-width: 380px; width: 100%; box-shadow: var(--shadow-md); }
+    .setup-wordmark { font-size: 11px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
+    .setup-title { font-size: 26px; font-weight: 700; letter-spacing: -0.5px; color: var(--text); margin-bottom: 4px; }
+    .setup-title span { color: var(--gold-dark); }
+    .setup-sub { color: var(--muted); font-size: 14px; margin-bottom: 28px; }
     .field + .field { margin-top: 14px; }
-    .field label { display: block; font-size: 13px; font-weight: 600; color: var(--muted); margin-bottom: 5px; letter-spacing: 0.3px; text-transform: uppercase; }
-    .field input { width: 100%; background: var(--bg); border: 1.5px solid var(--border); color: var(--text); border-radius: 10px; padding: 12px 14px; font-size: 15px; outline: none; font-family: var(--font); transition: border-color var(--trans); }
-    .field input:focus { border-color: var(--accent); }
-    .btn-connect { background: var(--teal); color: #fff; border: none; border-radius: 12px; padding: 14px 20px; font-size: 16px; font-weight: 600; cursor: pointer; width: 100%; margin-top: 20px; transition: opacity var(--trans); }
-    .btn-connect:active { opacity: 0.8; }
-    .setup-error { color: var(--red); font-size: 13px; margin-top: 10px; text-align: center; }
+    .field label { display: block; font-size: 11px; font-weight: 700; color: var(--muted); margin-bottom: 5px; letter-spacing: 0.5px; text-transform: uppercase; }
+    .field input { width: 100%; background: var(--bg); border: 1.5px solid var(--border); color: var(--text); border-radius: 10px; padding: 12px 14px; font-size: 15px; outline: none; font-family: var(--font); transition: border-color var(--ease); }
+    .field input:focus { border-color: var(--gold); }
+    .btn-primary { background: var(--teal); color: #fff; border: none; border-radius: 10px; padding: 14px 20px; font-size: 15px; font-weight: 600; cursor: pointer; width: 100%; margin-top: 24px; transition: opacity var(--ease); letter-spacing: 0.2px; }
+    .btn-primary:active { opacity: 0.82; }
+    .setup-error { color: var(--red); font-size: 13px; margin-top: 10px; text-align: center; min-height: 18px; }
 
     /* ── Header ── */
-    header { background: var(--teal); border-bottom: none; padding: 0 20px; height: 52px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 50; }
-    .logo { color: #fff !important; }
-    .logo em { color: var(--accent) !important; }
-    .hdr-btn { color: rgba(255,255,255,0.85) !important; }
-    .logo { font-size: 17px; font-weight: 700; letter-spacing: -0.3px; }
-    .logo em { color: var(--accent); font-style: normal; }
-    .hdr-btn { background: none; border: none; color: var(--accent); font-size: 15px; cursor: pointer; padding: 6px 2px; font-family: var(--font); }
-    .hdr-right { display: flex; gap: 14px; }
+    header { background: var(--teal); padding: 0 18px; height: 52px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 50; flex-shrink: 0; }
+    .wordmark { font-size: 13px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; color: rgba(255,255,255,0.5); }
+    .wordmark span { color: var(--gold); }
+    .hdr-actions { display: flex; gap: 6px; }
+    .icon-btn { background: rgba(255,255,255,0.1); border: none; border-radius: 8px; width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: background var(--ease); }
+    .icon-btn:active { background: rgba(255,255,255,0.2); }
+    .icon-btn svg { width: 16px; height: 16px; stroke: rgba(255,255,255,0.85); fill: none; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
 
     /* ── Tab bar ── */
-    #tabbar { background: var(--surface); border-top: 1px solid var(--border); display: flex; height: 64px; padding-bottom: env(safe-area-inset-bottom); position: sticky; bottom: 0; z-index: 50; }
-    .tab { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; cursor: pointer; color: var(--muted); transition: color var(--trans); padding: 6px 0; }
-    .tab.active { color: var(--teal); }
-    .tab-icon { font-size: 22px; line-height: 1; position: relative; }
-    .tab-label { font-size: 10px; font-weight: 500; letter-spacing: 0.1px; }
-    .tab-badge { position: absolute; top: -4px; right: -8px; background: var(--teal); color: #fff; border-radius: 99px; font-size: 10px; font-weight: 700; padding: 1px 5px; min-width: 17px; text-align: center; line-height: 15px; border: 2px solid var(--surface); }
-    .tab-badge.hide { display: none; }
+    #tabbar { background: var(--surface); border-top: 1px solid var(--border); display: flex; height: 60px; padding-bottom: env(safe-area-inset-bottom); position: sticky; bottom: 0; z-index: 50; flex-shrink: 0; }
+    .tab { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; color: var(--muted); transition: color var(--ease); border-top: 2px solid transparent; padding-top: 2px; position: relative; }
+    .tab.active { color: var(--teal); border-top-color: var(--gold); }
+    .tab-label { font-size: 10px; font-weight: 600; letter-spacing: 0.4px; text-transform: uppercase; }
+    .tab-count { position: absolute; top: 6px; right: calc(50% - 16px); background: var(--teal); color: #fff; border-radius: 99px; font-size: 9px; font-weight: 700; padding: 1px 5px; min-width: 16px; text-align: center; line-height: 14px; }
+    .tab-count.hide { display: none; }
+    /* Tab SVG icons */
+    .tab svg { width: 18px; height: 18px; stroke: currentColor; fill: none; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; margin-bottom: 3px; }
 
-    /* ── List view ── */
-    .list-header { padding: 20px 20px 10px; }
-    .list-title { font-size: 28px; font-weight: 700; letter-spacing: -0.5px; }
-    .list-sub   { font-size: 14px; color: var(--muted); margin-top: 3px; }
-    .list-body  { padding: 0 16px 20px; }
+    /* ── List ── */
+    .list-header { padding: 22px 20px 12px; }
+    .list-title  { font-size: 26px; font-weight: 700; letter-spacing: -0.4px; }
+    .list-sub    { font-size: 13px; color: var(--muted); margin-top: 2px; }
+    .list-body   { padding: 0 16px 24px; }
 
     /* ── Cards ── */
-    .card { background: var(--surface); border-radius: var(--r-card); padding: 16px 16px; margin-bottom: 10px; cursor: pointer; transition: transform var(--trans), box-shadow var(--trans); box-shadow: var(--shadow); display: flex; align-items: flex-start; gap: 12px; }
-    .card:active { transform: scale(0.98); box-shadow: none; }
-    .card-icon { font-size: 22px; margin-top: 1px; flex-shrink: 0; }
-    .card-body { flex: 1; min-width: 0; }
-    .card-title { font-size: 15px; font-weight: 600; color: var(--text); line-height: 1.35; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .card-meta  { font-size: 12px; color: var(--muted); margin-top: 4px; display: flex; gap: 8px; align-items: center; }
-    .card-arrow { color: var(--muted); font-size: 14px; flex-shrink: 0; margin-top: 2px; }
-    .pill { display: inline-block; padding: 2px 8px; border-radius: 99px; font-size: 11px; font-weight: 600; }
-    .pill-tech    { background: rgba(0,122,255,0.12); color: var(--blue); }
-    .pill-billing { background: rgba(255,149,0,0.12); color: var(--orange); }
-    .pill-onboard { background: rgba(52,199,89,0.12); color: var(--green); }
-    .pill-general { background: rgba(142,142,147,0.12); color: var(--muted); }
-    .pill-cand    { background: rgba(204,190,109,0.18); color: var(--accent-dark); }
-    .pill-ticket  { background: rgba(59,169,208,0.15); color: var(--blue); }
-    .pill-error   { background: rgba(181,32,37,0.12); color: var(--red); }
-    .pill-contact { background: rgba(52,199,89,0.12); color: var(--green); }
+    .card { background: var(--surface); border-radius: var(--r); padding: 14px 16px 14px 0; margin-bottom: 8px; cursor: pointer; transition: transform var(--ease), box-shadow var(--ease); box-shadow: var(--shadow); display: flex; align-items: center; gap: 0; overflow: hidden; }
+    .card:active { transform: scale(0.985); box-shadow: none; }
+    .card-strip { width: 4px; min-height: 44px; align-self: stretch; flex-shrink: 0; margin-right: 14px; border-radius: 0; }
+    .strip-gold  { background: var(--gold); }
+    .strip-blue  { background: var(--blue); }
+    .strip-red   { background: var(--red); }
+    .strip-teal  { background: var(--teal); }
+    .card-body  { flex: 1; min-width: 0; }
+    .card-title { font-size: 14px; font-weight: 600; color: var(--text); line-height: 1.35; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .card-date  { font-size: 12px; color: var(--muted); margin-top: 3px; }
+    .card-arrow { color: var(--border); font-size: 18px; font-weight: 300; flex-shrink: 0; padding-right: 4px; }
 
-    /* ── Empty state ── */
-    .empty { text-align: center; padding: 80px 32px 40px; }
-    .empty-icon { font-size: 52px; margin-bottom: 14px; }
-    .empty-title { font-size: 18px; font-weight: 600; margin-bottom: 6px; }
-    .empty-sub   { font-size: 14px; color: var(--muted); }
+    /* ── Empty ── */
+    .empty { text-align: center; padding: 72px 32px 40px; }
+    .empty-line { width: 32px; height: 2px; background: var(--gold); border-radius: 99px; margin: 0 auto 20px; }
+    .empty-title { font-size: 17px; font-weight: 600; margin-bottom: 4px; }
+    .empty-sub   { font-size: 13px; color: var(--muted); }
 
-    /* ── Loading ── */
+    /* ── Spinner ── */
     .loading { text-align: center; padding: 80px 20px; }
-    .spinner { width: 28px; height: 28px; border: 2.5px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.7s linear infinite; margin: 0 auto 14px; }
+    .spinner { width: 24px; height: 24px; border: 2px solid var(--border); border-top-color: var(--gold); border-radius: 50%; animation: spin 0.7s linear infinite; margin: 0 auto; }
     @keyframes spin { to { transform: rotate(360deg); } }
 
     /* ── Detail sheet ── */
-    #detail-sheet { position: fixed; inset: 0; z-index: 100; display: flex; flex-direction: column; background: var(--bg); transform: translateY(100%); transition: transform 0.32s cubic-bezier(0.32,0.72,0,1); }
+    #detail-sheet { position: fixed; inset: 0; z-index: 100; display: flex; flex-direction: column; background: var(--bg); transform: translateY(100%); transition: transform 0.3s cubic-bezier(0.32,0.72,0,1); }
     #detail-sheet.open { transform: translateY(0); }
-    .sheet-handle { width: 36px; height: 4px; background: var(--border); border-radius: 99px; margin: 10px auto 0; flex-shrink: 0; }
-    .sheet-header { display: flex; align-items: center; padding: 12px 20px 14px; gap: 12px; border-bottom: 1px solid var(--border); background: var(--surface); flex-shrink: 0; }
-    .sheet-back { background: none; border: none; color: var(--accent); font-size: 16px; cursor: pointer; font-family: var(--font); padding: 4px 0; white-space: nowrap; }
-    .sheet-title { font-size: 16px; font-weight: 600; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .sheet-handle { width: 32px; height: 3px; background: var(--border); border-radius: 99px; margin: 10px auto 0; flex-shrink: 0; }
+    .sheet-header { display: flex; align-items: center; padding: 12px 18px 14px; gap: 12px; border-bottom: 1px solid var(--border); background: var(--surface); flex-shrink: 0; }
+    .sheet-back  { background: none; border: none; color: var(--teal); font-size: 14px; font-weight: 600; cursor: pointer; font-family: var(--font); padding: 4px 0; white-space: nowrap; letter-spacing: 0.1px; }
+    .sheet-title { font-size: 15px; font-weight: 600; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text); }
     .sheet-body  { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 20px; }
-    .sheet-prose { background: var(--surface); border-radius: var(--r-card); padding: 20px; font-size: 14px; line-height: 1.75; color: var(--text2); box-shadow: var(--shadow); }
-    .sheet-prose h1,.sheet-prose h2,.sheet-prose h3 { color: var(--text); margin: 18px 0 8px; font-size: 16px; }
-    .sheet-prose h1 { font-size: 20px; margin-top: 0; }
+    .sheet-prose { background: var(--surface); border-radius: var(--r); padding: 20px; font-size: 14px; line-height: 1.8; color: var(--text2); box-shadow: var(--shadow); }
+    .sheet-prose h1 { font-size: 19px; font-weight: 700; color: var(--text); margin-bottom: 14px; letter-spacing: -0.3px; }
+    .sheet-prose h2 { font-size: 13px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin: 20px 0 6px; }
+    .sheet-prose h3 { font-size: 14px; font-weight: 600; color: var(--text); margin: 14px 0 4px; }
     .sheet-prose p  { margin-bottom: 10px; }
     .sheet-prose hr { border: none; border-top: 1px solid var(--border); margin: 18px 0; }
-    .sheet-prose pre { background: var(--bg); border-radius: 8px; padding: 12px; font-size: 12px; overflow-x: auto; margin: 12px 0; white-space: pre-wrap; word-break: break-word; color: var(--muted); }
-    .sheet-prose code { background: var(--bg); border-radius: 4px; padding: 2px 5px; font-size: 12px; }
+    .sheet-prose pre { background: var(--bg); border-radius: 8px; padding: 12px; font-size: 12px; overflow-x: auto; margin: 10px 0; white-space: pre-wrap; word-break: break-word; color: var(--muted); }
+    .sheet-prose code { background: var(--bg); border-radius: 4px; padding: 2px 5px; font-size: 12px; color: var(--muted); }
     .sheet-prose strong { color: var(--text); font-weight: 600; }
-    .sheet-actions { padding: 14px 20px; border-top: 1px solid var(--border); background: var(--surface); flex-shrink: 0; padding-bottom: calc(14px + env(safe-area-inset-bottom)); }
+    .sheet-prose li { margin-left: 18px; margin-bottom: 4px; }
+    .sheet-actions { padding: 14px 18px; border-top: 1px solid var(--border); background: var(--surface); flex-shrink: 0; padding-bottom: calc(14px + env(safe-area-inset-bottom)); }
     .action-row { display: flex; gap: 10px; }
-    .btn-action { flex: 1; border: none; border-radius: var(--r-btn); padding: 14px 12px; font-size: 16px; font-weight: 600; cursor: pointer; font-family: var(--font); transition: opacity var(--trans); }
-    .btn-action:active { opacity: 0.7; }
-    .btn-approve { background: var(--teal); color: #fff; }
-    .btn-reject  { background: rgba(181,32,37,0.12); color: var(--red); }
+    .btn-action { flex: 1; border: none; border-radius: 10px; padding: 14px 12px; font-size: 15px; font-weight: 600; cursor: pointer; font-family: var(--font); transition: opacity var(--ease); letter-spacing: 0.1px; }
+    .btn-action:active { opacity: 0.72; }
+    .btn-approve   { background: var(--teal); color: #fff; }
+    .btn-reject    { background: rgba(181,32,37,0.1); color: var(--red); }
     .btn-secondary { background: var(--surface2); color: var(--text2); }
-    .btn-warn    { background: rgba(255,149,0,0.12); color: var(--orange); }
+    .btn-neutral   { background: var(--surface2); color: var(--text2); }
 
-    /* ── Chat tab ── */
+    /* ── Chat ── */
     #chat-view { display: flex; flex-direction: column; height: 100%; }
-    .chat-messages { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 16px 16px 8px; }
-    .chat-bubble { max-width: 82%; margin-bottom: 14px; }
-    .chat-bubble.user { margin-left: auto; }
-    .bubble-inner { padding: 12px 16px; border-radius: 18px; font-size: 15px; line-height: 1.5; }
-    .chat-bubble.user .bubble-inner { background: var(--teal); color: #fff; border-bottom-right-radius: 4px; }
-    .chat-bubble.assistant .bubble-inner { background: var(--surface); color: var(--text); border-bottom-left-radius: 4px; box-shadow: var(--shadow); }
-    .bubble-time { font-size: 11px; color: var(--muted); margin-top: 4px; padding: 0 4px; }
-    .chat-bubble.user .bubble-time { text-align: right; }
-    .chat-input-row { padding: 10px 12px; border-top: 1px solid var(--border); background: var(--surface); display: flex; gap: 10px; align-items: flex-end; padding-bottom: calc(10px + env(safe-area-inset-bottom)); }
-    .chat-textarea { flex: 1; background: var(--bg); border: 1.5px solid var(--border); border-radius: 20px; padding: 10px 16px; font-size: 15px; font-family: var(--font); color: var(--text); outline: none; resize: none; max-height: 120px; line-height: 1.5; transition: border-color var(--trans); }
-    .chat-textarea:focus { border-color: var(--accent); }
-    .btn-send { background: var(--teal); border: none; border-radius: 50%; width: 38px; height: 38px; display: flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0; transition: opacity var(--trans); }
-    .btn-send:active { opacity: 0.7; }
-    .btn-send svg { fill: #fff; width: 16px; height: 16px; }
-    .chat-intro { text-align: center; padding: 40px 24px; }
-    .chat-intro-icon { font-size: 40px; margin-bottom: 12px; }
-    .chat-intro-title { font-size: 20px; font-weight: 700; margin-bottom: 6px; }
-    .chat-intro-sub { font-size: 14px; color: var(--muted); line-height: 1.6; }
-    .chat-suggestions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px; justify-content: center; }
-    .suggestion { background: var(--surface); border: 1.5px solid var(--border); border-radius: 99px; padding: 8px 16px; font-size: 13px; cursor: pointer; transition: var(--trans); color: var(--accent); font-weight: 500; }
+    .chat-messages { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 20px 16px 10px; }
+    .chat-intro { padding: 32px 8px 24px; }
+    .chat-intro-rule { width: 28px; height: 3px; background: var(--gold); border-radius: 99px; margin-bottom: 16px; }
+    .chat-intro-title { font-size: 22px; font-weight: 700; letter-spacing: -0.4px; margin-bottom: 6px; }
+    .chat-intro-title span { color: var(--gold-dark); }
+    .chat-intro-sub { font-size: 14px; color: var(--muted); line-height: 1.6; margin-bottom: 20px; }
+    .chat-suggestions { display: flex; flex-wrap: wrap; gap: 8px; }
+    .suggestion { background: var(--surface); border: 1.5px solid var(--border); border-radius: 99px; padding: 8px 14px; font-size: 13px; cursor: pointer; color: var(--teal); font-weight: 500; transition: border-color var(--ease); }
     .suggestion:active { opacity: 0.7; }
+    .chat-bubble { max-width: 82%; margin-bottom: 14px; }
+    .chat-bubble.user  { margin-left: auto; }
+    .bubble-inner { padding: 11px 15px; border-radius: 18px; font-size: 14px; line-height: 1.55; }
+    .chat-bubble.user .bubble-inner      { background: var(--teal); color: #fff; border-bottom-right-radius: 4px; }
+    .chat-bubble.assistant .bubble-inner { background: var(--surface); color: var(--text); border-bottom-left-radius: 4px; box-shadow: var(--shadow); }
+    .bubble-time { font-size: 10px; color: var(--muted); margin-top: 4px; padding: 0 4px; }
+    .chat-bubble.user .bubble-time { text-align: right; }
+    .chat-input-row { padding: 10px 12px; border-top: 1px solid var(--border); background: var(--surface); display: flex; gap: 8px; align-items: flex-end; padding-bottom: calc(10px + env(safe-area-inset-bottom)); flex-shrink: 0; }
+    .chat-textarea { flex: 1; background: var(--bg); border: 1.5px solid var(--border); border-radius: 20px; padding: 10px 16px; font-size: 15px; font-family: var(--font); color: var(--text); outline: none; resize: none; max-height: 120px; line-height: 1.5; transition: border-color var(--ease); }
+    .chat-textarea:focus { border-color: var(--gold); }
+    .btn-send { background: var(--teal); border: none; border-radius: 50%; width: 38px; height: 38px; display: flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0; transition: opacity var(--ease); }
+    .btn-send:active { opacity: 0.7; }
+    .btn-send svg { fill: #fff; width: 15px; height: 15px; }
 
     /* ── Toast ── */
-    #toast { position: fixed; bottom: calc(84px + env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%) translateY(20px); background: var(--text); color: var(--surface); border-radius: 99px; padding: 10px 20px; font-size: 14px; font-weight: 500; z-index: 200; opacity: 0; transition: opacity 0.2s, transform 0.2s; pointer-events: none; white-space: nowrap; }
+    #toast { position: fixed; bottom: calc(76px + env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%) translateY(16px); background: var(--teal); color: #fff; border-radius: 99px; padding: 9px 18px; font-size: 13px; font-weight: 600; z-index: 300; opacity: 0; transition: opacity 0.18s, transform 0.18s; pointer-events: none; white-space: nowrap; letter-spacing: 0.1px; }
     #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
     /* ── Settings sheet ── */
-    #settings-sheet { position: fixed; inset: 0; z-index: 200; background: rgba(0,0,0,0.4); display: none; }
+    #settings-sheet { position: fixed; inset: 0; z-index: 200; background: rgba(0,0,0,0.35); display: none; }
     #settings-sheet.open { display: block; }
-    .settings-card { position: absolute; bottom: 0; left: 0; right: 0; background: var(--surface); border-radius: 20px 20px 0 0; padding: 20px 24px; padding-bottom: calc(20px + env(safe-area-inset-bottom)); }
-    .settings-title { font-size: 18px; font-weight: 700; margin-bottom: 20px; }
-    .settings-row { margin-bottom: 16px; }
-    .settings-label { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 6px; }
-    .settings-input { width: 100%; background: var(--bg); border: 1.5px solid var(--border); color: var(--text); border-radius: 10px; padding: 11px 14px; font-size: 14px; outline: none; font-family: var(--font); }
-    .settings-input:focus { border-color: var(--accent); }
-    .btn-save { background: var(--teal); color: #fff; border: none; border-radius: 12px; padding: 14px; font-size: 16px; font-weight: 600; cursor: pointer; width: 100%; margin-top: 8px; font-family: var(--font); }
-    .btn-cancel { background: none; color: var(--muted); border: none; font-size: 15px; cursor: pointer; width: 100%; padding: 10px; margin-top: 4px; font-family: var(--font); }
+    .settings-panel { position: absolute; bottom: 0; left: 0; right: 0; background: var(--surface); border-radius: 18px 18px 0 0; padding: 22px 22px; padding-bottom: calc(22px + env(safe-area-inset-bottom)); }
+    .settings-title { font-size: 17px; font-weight: 700; margin-bottom: 22px; letter-spacing: -0.2px; }
+    .settings-row { margin-bottom: 14px; }
+    .settings-label { font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 5px; }
+    .settings-input { width: 100%; background: var(--bg); border: 1.5px solid var(--border); color: var(--text); border-radius: 10px; padding: 11px 14px; font-size: 14px; outline: none; font-family: var(--font); transition: border-color var(--ease); }
+    .settings-input:focus { border-color: var(--gold); }
 
     @media (min-width: 640px) {
-      #detail-sheet, #chat-view { max-width: 680px; margin: 0 auto; }
-      .action-row .btn-action { max-width: 240px; }
+      #detail-sheet { max-width: 680px; left: 50%; right: auto; transform: translateX(-50%) translateY(100%); width: 100%; }
+      #detail-sheet.open { transform: translateX(-50%) translateY(0); }
+      .action-row .btn-action { max-width: 220px; }
     }
   </style>
 </head>
 <body>
 
-<!-- Setup Screen -->
+<!-- Setup -->
 <div id="setup">
   <div class="setup-card">
-    <div class="setup-logo"><em>STRING</em> Brain</div>
-    <div class="setup-sub">Enter your credentials to connect.</div>
+    <div class="setup-wordmark"><span>STRING</span> Brain</div>
+    <div class="setup-title">Connect your<br><span>workspace</span></div>
+    <div class="setup-sub">Credentials are stored locally on this device only.</div>
     <div class="field">
       <label>GitHub Token</label>
       <input type="password" id="s-github" placeholder="ghp_..." autocomplete="off">
@@ -208,75 +204,80 @@
       <input type="text" id="s-repo" value="stephaniehofhenke/string-marketing-vault">
     </div>
     <div class="field">
-      <label>Claude API Key (for chat)</label>
+      <label>Claude API Key</label>
       <input type="password" id="s-claude" placeholder="sk-ant-..." autocomplete="off">
     </div>
-    <button class="btn-connect" onclick="saveSetup()">Connect →</button>
+    <button class="btn-primary" onclick="saveSetup()">Connect</button>
     <div id="setup-error" class="setup-error"></div>
   </div>
 </div>
 
 <!-- App -->
 <div id="app" style="display:none">
+
   <header>
-    <div class="logo"><em>STRING</em> Brain</div>
-    <div class="hdr-right">
-      <button class="hdr-btn" onclick="refreshAll()">↻</button>
-      <button class="hdr-btn" onclick="openSettings()">⚙</button>
+    <div class="wordmark"><span>STRING</span> Brain</div>
+    <div class="hdr-actions">
+      <button class="icon-btn" onclick="refreshAll()" title="Refresh">
+        <svg viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+      </button>
+      <button class="icon-btn" onclick="openSettings()" title="Settings">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      </button>
     </div>
   </header>
 
   <div id="screen">
 
-    <!-- Candidates tab -->
+    <!-- Candidates -->
     <div id="tab-candidates" class="tab-content">
       <div class="list-header">
-        <div class="list-title">Candidates</div>
-        <div class="list-sub">Help doc drafts pending your approval</div>
+        <div class="list-title">Review</div>
+        <div class="list-sub">Help doc candidates pending approval</div>
       </div>
       <div class="list-body" id="list-candidates"></div>
     </div>
 
-    <!-- Tickets tab -->
+    <!-- Tickets -->
     <div id="tab-tickets" class="tab-content" style="display:none">
       <div class="list-header">
         <div class="list-title">Unmatched</div>
-        <div class="list-sub">Tickets without a client match</div>
+        <div class="list-sub">Tickets with no client match</div>
       </div>
       <div class="list-body" id="list-tickets"></div>
     </div>
 
-    <!-- Errors tab -->
+    <!-- Errors -->
     <div id="tab-errors" class="tab-content" style="display:none">
       <div class="list-header">
         <div class="list-title">Errors</div>
-        <div class="list-sub">Automation errors for review</div>
+        <div class="list-sub">Automation failures for review</div>
       </div>
       <div class="list-body" id="list-errors"></div>
     </div>
 
-    <!-- Contacts tab -->
+    <!-- Contacts -->
     <div id="tab-contacts" class="tab-content" style="display:none">
       <div class="list-header">
-        <div class="list-title">New Contacts</div>
-        <div class="list-sub">Unknown attendees from meetings and tickets</div>
+        <div class="list-title">Contacts</div>
+        <div class="list-sub">New people to identify</div>
       </div>
       <div class="list-body" id="list-contacts"></div>
     </div>
 
-    <!-- Chat tab -->
-    <div id="tab-chat" class="tab-content" style="display:none; height: calc(100dvh - 52px - 64px);">
+    <!-- Chat -->
+    <div id="tab-chat" class="tab-content" style="display:none; height: calc(100dvh - 52px - 60px);">
       <div id="chat-view">
         <div class="chat-messages" id="chat-messages">
           <div class="chat-intro">
-            <div class="chat-intro-icon">🧠</div>
-            <div class="chat-intro-title">Ask STRING Brain</div>
-            <div class="chat-intro-sub">Ask about clients, get help writing content, or review something from the vault.</div>
+            <div class="chat-intro-rule"></div>
+            <div class="chat-intro-title">Ask <span>STRING</span> Brain</div>
+            <div class="chat-intro-sub">Client context, content drafts, vault questions — anything.</div>
             <div class="chat-suggestions">
               <div class="suggestion" onclick="sendSuggestion(this)">What did we discuss with EverSage last week?</div>
-              <div class="suggestion" onclick="sendSuggestion(this)">Draft a follow-up email for a new STRINGConnect client</div>
-              <div class="suggestion" onclick="sendSuggestion(this)">What help doc candidates are ready to approve?</div>
-              <div class="suggestion" onclick="sendSuggestion(this)">Summarize recent errors and their status</div>
+              <div class="suggestion" onclick="sendSuggestion(this)">Draft a follow-up for a new STRINGConnect client</div>
+              <div class="suggestion" onclick="sendSuggestion(this)">Which help doc candidates are ready to approve?</div>
+              <div class="suggestion" onclick="sendSuggestion(this)">Summarize recent errors</div>
             </div>
           </div>
         </div>
@@ -290,35 +291,40 @@
       </div>
     </div>
 
-  </div><!-- #screen -->
+  </div>
 
-  <!-- Bottom tab bar -->
+  <!-- Tab bar -->
   <div id="tabbar">
     <div class="tab active" data-tab="candidates" onclick="switchTab('candidates')">
-      <div class="tab-icon">📄<span id="b-candidates" class="tab-badge hide">0</span></div>
-      <div class="tab-label">Review</div>
+      <!-- document icon -->
+      <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+      <div class="tab-label">Review<span id="b-candidates" class="tab-count hide">0</span></div>
     </div>
     <div class="tab" data-tab="tickets" onclick="switchTab('tickets')">
-      <div class="tab-icon">🎫<span id="b-tickets" class="tab-badge hide">0</span></div>
-      <div class="tab-label">Tickets</div>
+      <!-- tag icon -->
+      <svg viewBox="0 0 24 24"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+      <div class="tab-label">Tickets<span id="b-tickets" class="tab-count hide">0</span></div>
     </div>
     <div class="tab" data-tab="errors" onclick="switchTab('errors')">
-      <div class="tab-icon">⚠️<span id="b-errors" class="tab-badge hide">0</span></div>
-      <div class="tab-label">Errors</div>
+      <!-- alert triangle -->
+      <svg viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      <div class="tab-label">Errors<span id="b-errors" class="tab-count hide">0</span></div>
     </div>
     <div class="tab" data-tab="contacts" onclick="switchTab('contacts')">
-      <div class="tab-icon">👤<span id="b-contacts" class="tab-badge hide">0</span></div>
-      <div class="tab-label">Contacts</div>
+      <!-- person icon -->
+      <svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+      <div class="tab-label">Contacts<span id="b-contacts" class="tab-count hide">0</span></div>
     </div>
     <div class="tab" data-tab="chat" onclick="switchTab('chat')">
-      <div class="tab-icon">💬</div>
+      <!-- message icon -->
+      <svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
       <div class="tab-label">Chat</div>
     </div>
   </div>
 
-</div><!-- #app -->
+</div>
 
-<!-- Detail Sheet -->
+<!-- Detail sheet -->
 <div id="detail-sheet">
   <div class="sheet-handle"></div>
   <div class="sheet-header">
@@ -333,9 +339,9 @@
   </div>
 </div>
 
-<!-- Settings Sheet -->
-<div id="settings-sheet" onclick="e => { if(e.target===this) closeSettings(); }">
-  <div class="settings-card">
+<!-- Settings sheet -->
+<div id="settings-sheet" onclick="if(event.target===this)closeSettings()">
+  <div class="settings-panel">
     <div class="settings-title">Settings</div>
     <div class="settings-row">
       <div class="settings-label">GitHub Token</div>
@@ -349,8 +355,8 @@
       <div class="settings-label">Claude API Key</div>
       <input class="settings-input" type="password" id="cfg-claude" placeholder="sk-ant-...">
     </div>
-    <button class="btn-save" onclick="saveSettings()">Save</button>
-    <button class="btn-cancel" onclick="closeSettings()">Cancel</button>
+    <button class="btn-primary" onclick="saveSettings()">Save</button>
+    <button style="background:none;border:none;color:var(--muted);font-size:14px;cursor:pointer;width:100%;padding:12px 0 0;font-family:var(--font)" onclick="closeSettings()">Cancel</button>
   </div>
 </div>
 
@@ -365,9 +371,7 @@ const FOLDERS = {
   contacts:   'Review/new-contacts',
 };
 const APPROVE_DEST = { candidates: 'Help Docs/drafts' };
-const TAB_ICONS  = { candidates:'📄', tickets:'🎫', errors:'⚠️', contacts:'👤' };
-const PILL_CLASS = { technical:'pill-tech', billing:'pill-billing', onboarding:'pill-onboard', general:'pill-general',
-                     candidates:'pill-cand', tickets:'pill-ticket', errors:'pill-error', contacts:'pill-contact' };
+const STRIP_CLASS  = { candidates:'strip-gold', tickets:'strip-blue', errors:'strip-red', contacts:'strip-teal' };
 
 let TOKEN = '', REPO = '', CLAUDE_KEY = '';
 let currentTab = 'candidates';
@@ -385,16 +389,15 @@ window.onload = () => {
     document.getElementById('app').style.flexDirection = 'column';
     refreshAll();
   } else {
-    // Pre-fill
     document.getElementById('s-repo').value = REPO;
   }
 };
 
 async function saveSetup() {
   const t = v('s-github'), r = v('s-repo'), c = v('s-claude');
-  if (!t || !r) { err('setup-error','GitHub token and repo are required.'); return; }
+  if (!t || !r) { err('setup-error', 'GitHub token and repo are required.'); return; }
   const ok = await testGitHub(t, r);
-  if (!ok) { err('setup-error','Cannot connect to GitHub. Check token and repo.'); return; }
+  if (!ok) { err('setup-error', 'Cannot connect to GitHub. Check your token.'); return; }
   TOKEN = t; REPO = r; CLAUDE_KEY = c;
   sls('sb_github', t); sls('sb_repo', r); sls('sb_claude', c);
   document.getElementById('setup').style.display = 'none';
@@ -450,7 +453,7 @@ async function readFile(path) {
 
 async function deleteFile(path, sha, msg) {
   const r = await gh(`/repos/${REPO}/contents/${encodeURIComponent(path)}`, {
-    method: 'DELETE', headers: {'Content-Type':'application/json'},
+    method: 'DELETE', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ message: msg, sha })
   });
   return r.ok;
@@ -460,7 +463,7 @@ async function putFile(path, content, msg, sha) {
   const body = { message: msg, content };
   if (sha) body.sha = sha;
   const r = await gh(`/repos/${REPO}/contents/${encodeURIComponent(path)}`, {
-    method: 'PUT', headers: {'Content-Type':'application/json'},
+    method: 'PUT', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body)
   });
   return r.ok;
@@ -468,26 +471,22 @@ async function putFile(path, content, msg, sha) {
 
 // ── Tabs ──────────────────────────────────────────────────────────────────────
 function switchTab(tab) {
-  // Hide all
   document.querySelectorAll('.tab-content').forEach(el => el.style.display = 'none');
   document.querySelectorAll('.tab').forEach(el => el.classList.toggle('active', el.dataset.tab === tab));
   currentTab = tab;
-
   if (tab === 'chat') {
     document.getElementById('tab-chat').style.display = 'block';
-    document.getElementById('tab-chat').style.height = 'calc(100dvh - 52px - 64px)';
-    document.getElementById('screen').classList.add('no-scroll');
+    document.getElementById('tab-chat').style.height = 'calc(100dvh - 52px - 60px)';
+    document.getElementById('screen').classList.add('locked');
   } else {
     document.getElementById(`tab-${tab}`).style.display = 'block';
-    document.getElementById('screen').classList.remove('no-scroll');
+    document.getElementById('screen').classList.remove('locked');
     loadTab(tab);
   }
 }
 
 async function refreshAll() {
-  for (const t of ['candidates','tickets','errors','contacts']) {
-    loadTabBadge(t);
-  }
+  for (const t of ['candidates', 'tickets', 'errors', 'contacts']) loadTabBadge(t);
   if (currentTab !== 'chat') loadTab(currentTab);
 }
 
@@ -495,12 +494,8 @@ async function loadTabBadge(tab) {
   const files = await listFolder(FOLDERS[tab]);
   const badge = document.getElementById(`b-${tab}`);
   if (!badge) return;
-  if (files.length > 0) {
-    badge.textContent = files.length;
-    badge.classList.remove('hide');
-  } else {
-    badge.classList.add('hide');
-  }
+  badge.textContent = files.length;
+  badge.classList.toggle('hide', files.length === 0);
 }
 
 async function loadTab(tab) {
@@ -513,31 +508,28 @@ async function loadTab(tab) {
 
 function renderList(tab, files, el) {
   if (!files.length) {
-    const msgs = { candidates:'No candidates pending', tickets:'No unmatched tickets', errors:'No errors', contacts:'No new contacts' };
-    el.innerHTML = `<div class="empty"><div class="empty-icon">✅</div><div class="empty-title">${msgs[tab]}</div><div class="empty-sub">All clear</div></div>`;
+    const msgs = { candidates: 'No candidates pending', tickets: 'No unmatched tickets', errors: 'No errors logged', contacts: 'No new contacts' };
+    el.innerHTML = `<div class="empty"><div class="empty-line"></div><div class="empty-title">${msgs[tab]}</div><div class="empty-sub">All clear</div></div>`;
     return;
   }
+  const strip = STRIP_CLASS[tab] || 'strip-teal';
   el.innerHTML = files.map(f => {
-    const name  = f.name.replace('.md','');
+    const name  = f.name.replace('.md', '');
     const parts = name.split('-');
-    const date  = parts.slice(0,3).join('-');
+    const date  = parts.slice(0, 3).join('-');
     const title = humanTitle(f.name);
-    const pClass = PILL_CLASS[tab] || 'pill-general';
     return `<div class="card" onclick="openSheet('${esc(f.path)}','${esc(f.name)}')">
-      <div class="card-icon">${TAB_ICONS[tab] || '📄'}</div>
+      <div class="card-strip ${strip}"></div>
       <div class="card-body">
         <div class="card-title">${esc2(title)}</div>
-        <div class="card-meta">
-          <span class="pill ${pClass}">${tab.slice(0,-1)}</span>
-          <span style="color:var(--muted)">${date}</span>
-        </div>
+        <div class="card-date">${date}</div>
       </div>
       <div class="card-arrow">›</div>
     </div>`;
   }).join('');
 }
 
-// ── Detail Sheet ──────────────────────────────────────────────────────────────
+// ── Detail sheet ──────────────────────────────────────────────────────────────
 async function openSheet(path, filename) {
   currentFile = null;
   document.getElementById('sheet-title').textContent = humanTitle(filename);
@@ -551,79 +543,60 @@ async function openSheet(path, filename) {
     return;
   }
   currentFile = { path, filename, sha: file.sha, content: file.content };
-  const raw = atob(file.content.replace(/\n/g,''));
+  const raw = atob(file.content.replace(/\n/g, ''));
   document.getElementById('sheet-prose').innerHTML = mdToHtml(raw);
-  buildSheetActions(path, filename, file.sha, file.content);
+  buildSheetActions();
 }
 
-function closeSheet() {
-  document.getElementById('detail-sheet').classList.remove('open');
-}
+function closeSheet() { document.getElementById('detail-sheet').classList.remove('open'); }
 
-function buildSheetActions(path, filename, sha, content) {
+function buildSheetActions() {
   const el = document.getElementById('sheet-actions');
   if (currentTab === 'candidates') {
     el.innerHTML = `
-      <button class="btn-action btn-approve" onclick="approveCandidate()">✓ Approve</button>
-      <button class="btn-action btn-reject"  onclick="rejectCurrent()">✕ Reject</button>`;
+      <button class="btn-action btn-approve" onclick="approveCandidate()">Approve</button>
+      <button class="btn-action btn-reject"  onclick="rejectCurrent()">Reject</button>`;
   } else if (currentTab === 'errors') {
     el.innerHTML = `
-      <button class="btn-action btn-approve" onclick="rejectCurrent()">✓ Resolved</button>
-      <button class="btn-action btn-secondary" onclick="closeSheet()">Close</button>`;
+      <button class="btn-action btn-approve" onclick="rejectCurrent()">Mark Resolved</button>
+      <button class="btn-action btn-neutral" onclick="closeSheet()">Close</button>`;
   } else if (currentTab === 'tickets') {
     el.innerHTML = `
-      <button class="btn-action btn-warn" onclick="rejectCurrent()">Archive</button>
-      <button class="btn-action btn-secondary" onclick="closeSheet()">Close</button>`;
+      <button class="btn-action btn-reject"  onclick="rejectCurrent()">Archive</button>
+      <button class="btn-action btn-neutral" onclick="closeSheet()">Close</button>`;
   } else {
     el.innerHTML = `
-      <button class="btn-action btn-reject" onclick="rejectCurrent()">Dismiss</button>
-      <button class="btn-action btn-secondary" onclick="closeSheet()">Close</button>`;
+      <button class="btn-action btn-reject"  onclick="rejectCurrent()">Dismiss</button>
+      <button class="btn-action btn-neutral" onclick="closeSheet()">Close</button>`;
   }
 }
 
 async function approveCandidate() {
   if (!currentFile) return;
   showToast('Moving to drafts…');
-  const ok = await putFile(
-    `${APPROVE_DEST.candidates}/${currentFile.filename}`,
-    currentFile.content,
-    `Approved: ${currentFile.filename}`
-  );
-  if (!ok) { showToast('Failed ✕'); return; }
+  const ok = await putFile(`${APPROVE_DEST.candidates}/${currentFile.filename}`, currentFile.content, `Approved: ${currentFile.filename}`);
+  if (!ok) { showToast('Failed'); return; }
   await deleteFile(currentFile.path, currentFile.sha, `Remove candidate: ${currentFile.filename}`);
-  showToast('Moved to Help Docs/drafts ✓');
-  closeSheet();
-  loadTab(currentTab);
-  loadTabBadge(currentTab);
+  showToast('Moved to Help Docs/drafts');
+  closeSheet(); loadTab(currentTab); loadTabBadge(currentTab);
 }
 
 async function rejectCurrent() {
   if (!currentFile) return;
   if (!confirm(`Remove "${humanTitle(currentFile.filename)}"?`)) return;
   const ok = await deleteFile(currentFile.path, currentFile.sha, `Rejected: ${currentFile.filename}`);
-  if (ok) {
-    showToast('Removed ✓');
-    closeSheet();
-    loadTab(currentTab);
-    loadTabBadge(currentTab);
-  } else {
-    showToast('Failed ✕');
-  }
+  if (ok) { showToast('Removed'); closeSheet(); loadTab(currentTab); loadTabBadge(currentTab); }
+  else showToast('Failed');
 }
 
 // ── Chat ──────────────────────────────────────────────────────────────────────
 const CHAT_SYSTEM = `You are STRING Brain — the AI assistant for STRING Marketing, a digital marketing agency serving nutrition and wellness private practices.
 
-You help Stephanie (the founder) with:
-- Client context and history
-- Drafting emails, follow-ups, and content
-- Reviewing and approving help docs
-- Understanding what's in the vault
-- General business questions
+You help Stephanie (the founder) with client context, drafting emails and content, reviewing help docs, understanding vault data, and general business decisions.
 
 STRING services: STRINGConnect ($97-197/mo GHL platform), STRINGFlow ($59/mo), Connected Practice Audit ($1,500), Connected Practice Build, Digital Elevation (website).
 
-Be concise, direct, and actionable. No fluff. When drafting content, produce it ready to copy-paste.`;
+Be concise, direct, and actionable. No filler. When drafting content, produce it ready to copy-paste.`;
 
 async function sendChat() {
   const input = document.getElementById('chat-input');
@@ -631,13 +604,12 @@ async function sendChat() {
   if (!msg) return;
   input.value = '';
   input.style.height = '';
-
   appendBubble('user', msg);
   chatHistory.push({ role: 'user', content: msg });
   document.querySelector('.chat-intro')?.remove();
 
   if (!CLAUDE_KEY) {
-    appendBubble('assistant', 'No Claude API key set. Add it in ⚙ Settings to use chat.');
+    appendBubble('assistant', 'No Claude API key — add it in Settings to use chat.');
     return;
   }
 
@@ -651,14 +623,9 @@ async function sendChat() {
         'anthropic-dangerous-direct-browser-access': 'true',
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        model: 'claude-haiku-4-5',
-        max_tokens: 1500,
-        system: CHAT_SYSTEM,
-        messages: chatHistory,
-      })
+      body: JSON.stringify({ model: 'claude-haiku-4-5', max_tokens: 1500, system: CHAT_SYSTEM, messages: chatHistory })
     });
-    const data = await res.json();
+    const data  = await res.json();
     const reply = data.content?.[0]?.text || 'No response.';
     typing.querySelector('.bubble-inner').innerHTML = mdToHtml(reply);
     chatHistory.push({ role: 'assistant', content: reply });
@@ -679,42 +646,27 @@ function appendBubble(role, text, isTyping = false) {
   return el;
 }
 
-function scrollChat() {
-  const msgs = document.getElementById('chat-messages');
-  msgs.scrollTop = msgs.scrollHeight;
-}
+function scrollChat() { const m = document.getElementById('chat-messages'); m.scrollTop = m.scrollHeight; }
+function sendSuggestion(el) { document.getElementById('chat-input').value = el.textContent; sendChat(); }
+function handleChatKey(e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); } }
+function autoResize(el) { el.style.height = ''; el.style.height = Math.min(el.scrollHeight, 120) + 'px'; }
 
-function sendSuggestion(el) {
-  document.getElementById('chat-input').value = el.textContent;
-  sendChat();
-}
-
-function handleChatKey(e) {
-  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); }
-}
-
-function autoResize(el) {
-  el.style.height = '';
-  el.style.height = Math.min(el.scrollHeight, 120) + 'px';
-}
-
-// ── Markdown renderer ─────────────────────────────────────────────────────────
+// ── Markdown ──────────────────────────────────────────────────────────────────
 function mdToHtml(md) {
   let s = md.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   s = s.replace(/```[\s\S]*?```/g, m => `<pre>${m.slice(3,-3).trim()}</pre>`);
-  s = s.replace(/`([^`]+)`/g,'<code>$1</code>');
-  s = s.replace(/^#### (.+)$/gm,'<h4>$1</h4>');
-  s = s.replace(/^### (.+)$/gm,'<h3>$1</h3>');
-  s = s.replace(/^## (.+)$/gm,'<h2>$1</h2>');
-  s = s.replace(/^# (.+)$/gm,'<h1>$1</h1>');
-  s = s.replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>');
-  s = s.replace(/\*([^*]+)\*/g,'<em>$1</em>');
-  s = s.replace(/^---+$/gm,'<hr>');
-  s = s.replace(/^\- (.+)$/gm,'<li>$1</li>');
-  s = s.replace(/(<li>.*<\/li>)/s, '<ul>$1</ul>');
-  // Dim frontmatter
-  s = s.replace(/^(---\n[\s\S]*?\n---)/m,'<pre style="opacity:0.4;font-size:11px">$1</pre>');
-  s = s.replace(/\n/g,'<br>');
+  s = s.replace(/`([^`]+)`/g, '<code>$1</code>');
+  s = s.replace(/^#### (.+)$/gm, '<h3>$1</h3>');
+  s = s.replace(/^### (.+)$/gm, '<h3>$1</h3>');
+  s = s.replace(/^## (.+)$/gm, '<h2>$1</h2>');
+  s = s.replace(/^# (.+)$/gm, '<h1>$1</h1>');
+  s = s.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+  s = s.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+  s = s.replace(/^---+$/gm, '<hr>');
+  s = s.replace(/^\- (.+)$/gm, '<li>$1</li>');
+  s = s.replace(/(<li>[\s\S]*?<\/li>)/g, '<ul>$1</ul>');
+  s = s.replace(/^(---\n[\s\S]*?\n---)/m, '<pre style="opacity:0.35;font-size:11px">$1</pre>');
+  s = s.replace(/\n/g, '<br>');
   return s;
 }
 
@@ -725,22 +677,22 @@ function showToast(msg) {
   el.textContent = msg;
   el.classList.add('show');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => el.classList.remove('show'), 2500);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 2200);
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function humanTitle(filename) {
-  return filename.replace('.md','')
-    .replace(/^\d{4}-\d{2}-\d{2}-\d+-?/,'')
-    .replace(/-/g,' ')
+  return filename.replace('.md', '')
+    .replace(/^\d{4}-\d{2}-\d{2}-\d+-?/, '')
+    .replace(/-/g, ' ')
     .replace(/\b\w/g, c => c.toUpperCase()) || filename;
 }
-function esc(s)  { return (s||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'"); }
-function esc2(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;'); }
-function v(id)   { return document.getElementById(id)?.value?.trim() || ''; }
-function ls(k)   { try { return localStorage.getItem(k); } catch { return ''; } }
-function sls(k,v){ try { localStorage.setItem(k,v); } catch {} }
-function err(id, msg) { const el = document.getElementById(id); if(el){el.textContent=msg;el.style.display='block';} }
+function esc(s)   { return (s||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'"); }
+function esc2(s)  { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;'); }
+function v(id)    { return document.getElementById(id)?.value?.trim() || ''; }
+function ls(k)    { try { return localStorage.getItem(k); } catch { return ''; } }
+function sls(k,v) { try { localStorage.setItem(k,v); } catch {} }
+function err(id, msg) { const el = document.getElementById(id); if (el) { el.textContent = msg; el.style.display = 'block'; } }
 </script>
 </body>
 </html>
