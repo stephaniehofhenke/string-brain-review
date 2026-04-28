@@ -2,187 +2,347 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>STRING Brain Review</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>STRING Brain</title>
   <style>
+    /* ── Design tokens ── */
     :root {
-      --bg:        #0f1117;
-      --surface:   #1a1d27;
-      --border:    #2a2d3d;
-      --accent:    #6c63ff;
-      --accent2:   #00d4aa;
-      --danger:    #ff4d6d;
-      --warn:      #ffb700;
-      --text:      #e8eaf0;
-      --muted:     #7b7f96;
-      --green:     #2ecc71;
-      --card-r:    12px;
-      --trans:     0.18s ease;
+      --bg:       #f2f2f7;
+      --surface:  #ffffff;
+      --surface2: #f9f9fb;
+      --border:   rgba(0,0,0,0.08);
+      --text:     #1c1c1e;
+      --text2:    #3a3a3c;
+      --muted:    #8e8e93;
+      --accent:   #5856d6;
+      --green:    #34c759;
+      --red:      #ff3b30;
+      --orange:   #ff9500;
+      --blue:     #007aff;
+      --teal:     #32ade6;
+      --r-card:   14px;
+      --r-btn:    12px;
+      --shadow:   0 2px 12px rgba(0,0,0,0.07);
+      --shadow-lg:0 8px 32px rgba(0,0,0,0.12);
+      --font: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Helvetica, Arial, sans-serif;
+      --trans: 0.18s cubic-bezier(0.25,0.46,0.45,0.94);
     }
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; min-height: 100vh; }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg:       #1c1c1e;
+        --surface:  #2c2c2e;
+        --surface2: #3a3a3c;
+        --border:   rgba(255,255,255,0.1);
+        --text:     #f2f2f7;
+        --text2:    #ebebf5cc;
+        --muted:    #8e8e93;
+      }
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+    html, body { height: 100%; overflow: hidden; font-family: var(--font); background: var(--bg); color: var(--text); }
+
+    /* ── Full-height layout ── */
+    #app    { height: 100vh; height: 100dvh; display: flex; flex-direction: column; }
+    #screen { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+    #screen.no-scroll { overflow: hidden; }
+
+    /* ── Setup screen ── */
+    #setup { position: fixed; inset: 0; background: var(--bg); z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 24px; }
+    .setup-card { background: var(--surface); border-radius: 24px; padding: 32px 28px; max-width: 400px; width: 100%; box-shadow: var(--shadow-lg); }
+    .setup-logo { font-size: 28px; font-weight: 700; letter-spacing: -0.5px; margin-bottom: 6px; }
+    .setup-logo em { color: var(--accent); font-style: normal; }
+    .setup-sub  { color: var(--muted); font-size: 14px; margin-bottom: 28px; }
+    .field + .field { margin-top: 14px; }
+    .field label { display: block; font-size: 13px; font-weight: 600; color: var(--muted); margin-bottom: 5px; letter-spacing: 0.3px; text-transform: uppercase; }
+    .field input { width: 100%; background: var(--bg); border: 1.5px solid var(--border); color: var(--text); border-radius: 10px; padding: 12px 14px; font-size: 15px; outline: none; font-family: var(--font); transition: border-color var(--trans); }
+    .field input:focus { border-color: var(--accent); }
+    .btn-connect { background: var(--accent); color: #fff; border: none; border-radius: 12px; padding: 14px 20px; font-size: 16px; font-weight: 600; cursor: pointer; width: 100%; margin-top: 20px; transition: opacity var(--trans); }
+    .btn-connect:active { opacity: 0.8; }
+    .setup-error { color: var(--red); font-size: 13px; margin-top: 10px; text-align: center; }
 
     /* ── Header ── */
-    header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 0 20px; display: flex; align-items: center; justify-content: space-between; height: 56px; position: sticky; top: 0; z-index: 100; }
+    header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 0 20px; height: 52px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 50; }
     .logo { font-size: 17px; font-weight: 700; letter-spacing: -0.3px; }
-    .logo span { color: var(--accent); }
-    .header-actions { display: flex; gap: 10px; align-items: center; }
-    .btn-icon { background: none; border: 1px solid var(--border); color: var(--muted); border-radius: 8px; padding: 6px 10px; cursor: pointer; font-size: 14px; transition: var(--trans); }
-    .btn-icon:hover { color: var(--text); border-color: var(--accent); }
+    .logo em { color: var(--accent); font-style: normal; }
+    .hdr-btn { background: none; border: none; color: var(--accent); font-size: 15px; cursor: pointer; padding: 6px 2px; font-family: var(--font); }
+    .hdr-right { display: flex; gap: 14px; }
 
-    /* ── Setup overlay ── */
-    #setup-overlay { position: fixed; inset: 0; background: var(--bg); z-index: 999; display: flex; align-items: center; justify-content: center; padding: 24px; }
-    .setup-card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 36px; max-width: 440px; width: 100%; }
-    .setup-card h2 { font-size: 22px; margin-bottom: 8px; }
-    .setup-card p  { color: var(--muted); font-size: 14px; line-height: 1.6; margin-bottom: 24px; }
-    .field-label { font-size: 13px; color: var(--muted); margin-bottom: 6px; }
-    .field-input { width: 100%; background: var(--bg); border: 1px solid var(--border); color: var(--text); border-radius: 8px; padding: 10px 14px; font-size: 14px; outline: none; transition: var(--trans); }
-    .field-input:focus { border-color: var(--accent); }
-    .btn-primary { background: var(--accent); color: #fff; border: none; border-radius: 8px; padding: 12px 20px; font-size: 15px; font-weight: 600; cursor: pointer; width: 100%; margin-top: 16px; transition: var(--trans); }
-    .btn-primary:hover { opacity: 0.88; }
-    .setup-error { color: var(--danger); font-size: 13px; margin-top: 10px; display: none; }
+    /* ── Tab bar ── */
+    #tabbar { background: var(--surface); border-top: 1px solid var(--border); display: flex; height: 64px; padding-bottom: env(safe-area-inset-bottom); position: sticky; bottom: 0; z-index: 50; }
+    .tab { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; cursor: pointer; color: var(--muted); transition: color var(--trans); padding: 6px 0; }
+    .tab.active { color: var(--accent); }
+    .tab-icon { font-size: 22px; line-height: 1; position: relative; }
+    .tab-label { font-size: 10px; font-weight: 500; letter-spacing: 0.1px; }
+    .tab-badge { position: absolute; top: -4px; right: -8px; background: var(--red); color: #fff; border-radius: 99px; font-size: 10px; font-weight: 700; padding: 1px 5px; min-width: 17px; text-align: center; line-height: 15px; border: 2px solid var(--surface); }
+    .tab-badge.hide { display: none; }
 
-    /* ── Tabs ── */
-    #tabs { background: var(--surface); border-bottom: 1px solid var(--border); display: flex; gap: 0; overflow-x: auto; scrollbar-width: none; }
-    #tabs::-webkit-scrollbar { display: none; }
-    .tab { flex-shrink: 0; padding: 14px 20px; font-size: 14px; font-weight: 500; color: var(--muted); cursor: pointer; border-bottom: 2px solid transparent; transition: var(--trans); display: flex; align-items: center; gap: 7px; }
-    .tab:hover { color: var(--text); }
-    .tab.active { color: var(--text); border-bottom-color: var(--accent); }
-    .badge { background: var(--accent); color: #fff; border-radius: 999px; padding: 2px 8px; font-size: 11px; font-weight: 700; min-width: 20px; text-align: center; }
-    .badge.warn { background: var(--warn); color: #000; }
-    .badge.danger { background: var(--danger); }
-    .badge.muted { background: var(--border); color: var(--muted); }
-
-    /* ── Main content ── */
-    main { max-width: 780px; margin: 0 auto; padding: 20px 16px; }
-
-    /* ── Loading / empty states ── */
-    .loading { text-align: center; padding: 60px 20px; color: var(--muted); }
-    .spinner { width: 32px; height: 32px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; margin: 0 auto 16px; }
-    @keyframes spin { to { transform: rotate(360deg); } }
-    .empty { text-align: center; padding: 60px 20px; }
-    .empty-icon { font-size: 48px; margin-bottom: 12px; }
-    .empty-msg { color: var(--muted); font-size: 15px; }
-    .empty-sub  { color: var(--border); font-size: 13px; margin-top: 6px; }
+    /* ── List view ── */
+    .list-header { padding: 20px 20px 10px; }
+    .list-title { font-size: 28px; font-weight: 700; letter-spacing: -0.5px; }
+    .list-sub   { font-size: 14px; color: var(--muted); margin-top: 3px; }
+    .list-body  { padding: 0 16px 20px; }
 
     /* ── Cards ── */
-    .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--card-r); padding: 16px 18px; margin-bottom: 10px; cursor: pointer; transition: var(--trans); }
-    .card:hover { border-color: var(--accent); transform: translateY(-1px); }
-    .card-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
-    .card-title { font-size: 15px; font-weight: 600; line-height: 1.4; flex: 1; }
-    .card-meta { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 7px; }
-    .chip { font-size: 11px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--border); color: var(--muted); }
-    .chip.cat-technical  { border-color: #4a9eff33; color: #4a9eff; }
-    .chip.cat-billing    { border-color: #ffb70033; color: var(--warn); }
-    .chip.cat-onboarding { border-color: #00d4aa33; color: var(--accent2); }
-    .chip.cat-general    { border-color: var(--border); }
-    .chip.type-candidate { border-color: #6c63ff33; color: var(--accent); }
-    .chip.type-ticket    { border-color: #2ecc7133; color: var(--green); }
-    .chip.type-error     { border-color: #ff4d6d33; color: var(--danger); }
-    .chip.type-contact   { border-color: #00d4aa33; color: var(--accent2); }
+    .card { background: var(--surface); border-radius: var(--r-card); padding: 16px 16px; margin-bottom: 10px; cursor: pointer; transition: transform var(--trans), box-shadow var(--trans); box-shadow: var(--shadow); display: flex; align-items: flex-start; gap: 12px; }
+    .card:active { transform: scale(0.98); box-shadow: none; }
+    .card-icon { font-size: 22px; margin-top: 1px; flex-shrink: 0; }
+    .card-body { flex: 1; min-width: 0; }
+    .card-title { font-size: 15px; font-weight: 600; color: var(--text); line-height: 1.35; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .card-meta  { font-size: 12px; color: var(--muted); margin-top: 4px; display: flex; gap: 8px; align-items: center; }
+    .card-arrow { color: var(--muted); font-size: 14px; flex-shrink: 0; margin-top: 2px; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 99px; font-size: 11px; font-weight: 600; }
+    .pill-tech    { background: rgba(0,122,255,0.12); color: var(--blue); }
+    .pill-billing { background: rgba(255,149,0,0.12); color: var(--orange); }
+    .pill-onboard { background: rgba(52,199,89,0.12); color: var(--green); }
+    .pill-general { background: rgba(142,142,147,0.12); color: var(--muted); }
+    .pill-cand    { background: rgba(88,86,214,0.12); color: var(--accent); }
+    .pill-ticket  { background: rgba(50,173,230,0.12); color: var(--teal); }
+    .pill-error   { background: rgba(255,59,48,0.12); color: var(--red); }
+    .pill-contact { background: rgba(52,199,89,0.12); color: var(--green); }
 
-    /* ── Detail panel ── */
-    #detail { display: none; }
-    #detail.open { display: block; }
-    .detail-back { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 14px; cursor: pointer; margin-bottom: 16px; padding: 6px 0; }
-    .detail-back:hover { color: var(--text); }
-    .detail-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--card-r); }
-    .detail-header { padding: 20px 20px 16px; border-bottom: 1px solid var(--border); }
-    .detail-title { font-size: 18px; font-weight: 700; margin-bottom: 8px; line-height: 1.4; }
-    .detail-meta { display: flex; gap: 8px; flex-wrap: wrap; }
-    .detail-body { padding: 20px; font-size: 14px; line-height: 1.7; color: #c5c8d8; max-height: 55vh; overflow-y: auto; }
-    .detail-body pre { background: var(--bg); border-radius: 6px; padding: 12px; overflow-x: auto; font-size: 12px; margin: 12px 0; white-space: pre-wrap; word-break: break-word; }
-    .detail-body h1, .detail-body h2, .detail-body h3, .detail-body h4 { color: var(--text); margin: 16px 0 8px; }
-    .detail-body p { margin-bottom: 10px; }
-    .detail-body hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
-    .detail-body strong { color: var(--text); }
-    .detail-actions { padding: 16px 20px; border-top: 1px solid var(--border); display: flex; gap: 10px; flex-wrap: wrap; }
-    .btn-approve { background: var(--accent2); color: #000; border: none; border-radius: 8px; padding: 10px 20px; font-size: 14px; font-weight: 700; cursor: pointer; transition: var(--trans); flex: 1; min-width: 120px; }
-    .btn-approve:hover { opacity: 0.85; }
-    .btn-reject  { background: transparent; color: var(--danger); border: 1px solid var(--danger); border-radius: 8px; padding: 10px 20px; font-size: 14px; font-weight: 600; cursor: pointer; transition: var(--trans); flex: 1; min-width: 100px; }
-    .btn-reject:hover { background: var(--danger); color: #fff; }
-    .btn-archive { background: transparent; color: var(--muted); border: 1px solid var(--border); border-radius: 8px; padding: 10px 16px; font-size: 14px; cursor: pointer; transition: var(--trans); }
-    .btn-archive:hover { color: var(--text); border-color: var(--text); }
+    /* ── Empty state ── */
+    .empty { text-align: center; padding: 80px 32px 40px; }
+    .empty-icon { font-size: 52px; margin-bottom: 14px; }
+    .empty-title { font-size: 18px; font-weight: 600; margin-bottom: 6px; }
+    .empty-sub   { font-size: 14px; color: var(--muted); }
+
+    /* ── Loading ── */
+    .loading { text-align: center; padding: 80px 20px; }
+    .spinner { width: 28px; height: 28px; border: 2.5px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.7s linear infinite; margin: 0 auto 14px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Detail sheet ── */
+    #detail-sheet { position: fixed; inset: 0; z-index: 100; display: flex; flex-direction: column; background: var(--bg); transform: translateY(100%); transition: transform 0.32s cubic-bezier(0.32,0.72,0,1); }
+    #detail-sheet.open { transform: translateY(0); }
+    .sheet-handle { width: 36px; height: 4px; background: var(--border); border-radius: 99px; margin: 10px auto 0; flex-shrink: 0; }
+    .sheet-header { display: flex; align-items: center; padding: 12px 20px 14px; gap: 12px; border-bottom: 1px solid var(--border); background: var(--surface); flex-shrink: 0; }
+    .sheet-back { background: none; border: none; color: var(--accent); font-size: 16px; cursor: pointer; font-family: var(--font); padding: 4px 0; white-space: nowrap; }
+    .sheet-title { font-size: 16px; font-weight: 600; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .sheet-body  { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 20px; }
+    .sheet-prose { background: var(--surface); border-radius: var(--r-card); padding: 20px; font-size: 14px; line-height: 1.75; color: var(--text2); box-shadow: var(--shadow); }
+    .sheet-prose h1,.sheet-prose h2,.sheet-prose h3 { color: var(--text); margin: 18px 0 8px; font-size: 16px; }
+    .sheet-prose h1 { font-size: 20px; margin-top: 0; }
+    .sheet-prose p  { margin-bottom: 10px; }
+    .sheet-prose hr { border: none; border-top: 1px solid var(--border); margin: 18px 0; }
+    .sheet-prose pre { background: var(--bg); border-radius: 8px; padding: 12px; font-size: 12px; overflow-x: auto; margin: 12px 0; white-space: pre-wrap; word-break: break-word; color: var(--muted); }
+    .sheet-prose code { background: var(--bg); border-radius: 4px; padding: 2px 5px; font-size: 12px; }
+    .sheet-prose strong { color: var(--text); font-weight: 600; }
+    .sheet-actions { padding: 14px 20px; border-top: 1px solid var(--border); background: var(--surface); flex-shrink: 0; padding-bottom: calc(14px + env(safe-area-inset-bottom)); }
+    .action-row { display: flex; gap: 10px; }
+    .btn-action { flex: 1; border: none; border-radius: var(--r-btn); padding: 14px 12px; font-size: 16px; font-weight: 600; cursor: pointer; font-family: var(--font); transition: opacity var(--trans); }
+    .btn-action:active { opacity: 0.7; }
+    .btn-approve { background: var(--green); color: #fff; }
+    .btn-reject  { background: rgba(255,59,48,0.12); color: var(--red); }
+    .btn-secondary { background: var(--surface2); color: var(--text2); }
+    .btn-warn    { background: rgba(255,149,0,0.12); color: var(--orange); }
+
+    /* ── Chat tab ── */
+    #chat-view { display: flex; flex-direction: column; height: 100%; }
+    .chat-messages { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 16px 16px 8px; }
+    .chat-bubble { max-width: 82%; margin-bottom: 14px; }
+    .chat-bubble.user { margin-left: auto; }
+    .bubble-inner { padding: 12px 16px; border-radius: 18px; font-size: 15px; line-height: 1.5; }
+    .chat-bubble.user .bubble-inner { background: var(--accent); color: #fff; border-bottom-right-radius: 4px; }
+    .chat-bubble.assistant .bubble-inner { background: var(--surface); color: var(--text); border-bottom-left-radius: 4px; box-shadow: var(--shadow); }
+    .bubble-time { font-size: 11px; color: var(--muted); margin-top: 4px; padding: 0 4px; }
+    .chat-bubble.user .bubble-time { text-align: right; }
+    .chat-input-row { padding: 10px 12px; border-top: 1px solid var(--border); background: var(--surface); display: flex; gap: 10px; align-items: flex-end; padding-bottom: calc(10px + env(safe-area-inset-bottom)); }
+    .chat-textarea { flex: 1; background: var(--bg); border: 1.5px solid var(--border); border-radius: 20px; padding: 10px 16px; font-size: 15px; font-family: var(--font); color: var(--text); outline: none; resize: none; max-height: 120px; line-height: 1.5; transition: border-color var(--trans); }
+    .chat-textarea:focus { border-color: var(--accent); }
+    .btn-send { background: var(--accent); border: none; border-radius: 50%; width: 38px; height: 38px; display: flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0; transition: opacity var(--trans); }
+    .btn-send:active { opacity: 0.7; }
+    .btn-send svg { fill: #fff; width: 16px; height: 16px; }
+    .chat-intro { text-align: center; padding: 40px 24px; }
+    .chat-intro-icon { font-size: 40px; margin-bottom: 12px; }
+    .chat-intro-title { font-size: 20px; font-weight: 700; margin-bottom: 6px; }
+    .chat-intro-sub { font-size: 14px; color: var(--muted); line-height: 1.6; }
+    .chat-suggestions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px; justify-content: center; }
+    .suggestion { background: var(--surface); border: 1.5px solid var(--border); border-radius: 99px; padding: 8px 16px; font-size: 13px; cursor: pointer; transition: var(--trans); color: var(--accent); font-weight: 500; }
+    .suggestion:active { opacity: 0.7; }
 
     /* ── Toast ── */
-    #toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(100px); background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 12px 20px; font-size: 14px; z-index: 200; transition: transform 0.3s ease; max-width: 90vw; text-align: center; }
-    #toast.show { transform: translateX(-50%) translateY(0); }
-    #toast.success { border-color: var(--accent2); color: var(--accent2); }
-    #toast.error   { border-color: var(--danger); color: var(--danger); }
+    #toast { position: fixed; bottom: calc(84px + env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%) translateY(20px); background: var(--text); color: var(--surface); border-radius: 99px; padding: 10px 20px; font-size: 14px; font-weight: 500; z-index: 200; opacity: 0; transition: opacity 0.2s, transform 0.2s; pointer-events: none; white-space: nowrap; }
+    #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
-    /* ── Refresh button ── */
-    .refresh-row { display: flex; justify-content: flex-end; margin-bottom: 12px; }
-    .btn-refresh { background: none; border: 1px solid var(--border); color: var(--muted); border-radius: 8px; padding: 7px 14px; font-size: 13px; cursor: pointer; transition: var(--trans); }
-    .btn-refresh:hover { color: var(--text); border-color: var(--accent); }
+    /* ── Settings sheet ── */
+    #settings-sheet { position: fixed; inset: 0; z-index: 200; background: rgba(0,0,0,0.4); display: none; }
+    #settings-sheet.open { display: block; }
+    .settings-card { position: absolute; bottom: 0; left: 0; right: 0; background: var(--surface); border-radius: 20px 20px 0 0; padding: 20px 24px; padding-bottom: calc(20px + env(safe-area-inset-bottom)); }
+    .settings-title { font-size: 18px; font-weight: 700; margin-bottom: 20px; }
+    .settings-row { margin-bottom: 16px; }
+    .settings-label { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 6px; }
+    .settings-input { width: 100%; background: var(--bg); border: 1.5px solid var(--border); color: var(--text); border-radius: 10px; padding: 11px 14px; font-size: 14px; outline: none; font-family: var(--font); }
+    .settings-input:focus { border-color: var(--accent); }
+    .btn-save { background: var(--accent); color: #fff; border: none; border-radius: 12px; padding: 14px; font-size: 16px; font-weight: 600; cursor: pointer; width: 100%; margin-top: 8px; font-family: var(--font); }
+    .btn-cancel { background: none; color: var(--muted); border: none; font-size: 15px; cursor: pointer; width: 100%; padding: 10px; margin-top: 4px; font-family: var(--font); }
 
-    /* ── Responsive ── */
-    @media (max-width: 600px) {
-      .tab { padding: 12px 14px; font-size: 13px; }
-      .detail-actions { flex-direction: column; }
-      .btn-approve, .btn-reject { flex: none; width: 100%; }
+    @media (min-width: 640px) {
+      #detail-sheet, #chat-view { max-width: 680px; margin: 0 auto; }
+      .action-row .btn-action { max-width: 240px; }
     }
   </style>
 </head>
 <body>
 
-<!-- Setup Overlay -->
-<div id="setup-overlay">
+<!-- Setup Screen -->
+<div id="setup">
   <div class="setup-card">
-    <h2>STRING Brain Review</h2>
-    <p>Enter your GitHub personal access token to connect to the vault. It's stored only in your browser — never sent anywhere except GitHub.</p>
-    <div class="field-label">GitHub Token</div>
-    <input type="password" id="token-input" class="field-input" placeholder="ghp_..." autocomplete="off">
-    <div class="field-label" style="margin-top:14px;">Vault repo (owner/repo)</div>
-    <input type="text" id="repo-input" class="field-input" value="stephaniehofhenke/string-marketing-vault">
-    <button class="btn-primary" onclick="saveToken()">Connect →</button>
+    <div class="setup-logo"><em>STRING</em> Brain</div>
+    <div class="setup-sub">Enter your credentials to connect.</div>
+    <div class="field">
+      <label>GitHub Token</label>
+      <input type="password" id="s-github" placeholder="ghp_..." autocomplete="off">
+    </div>
+    <div class="field">
+      <label>Vault Repo</label>
+      <input type="text" id="s-repo" value="stephaniehofhenke/string-marketing-vault">
+    </div>
+    <div class="field">
+      <label>Claude API Key (for chat)</label>
+      <input type="password" id="s-claude" placeholder="sk-ant-..." autocomplete="off">
+    </div>
+    <button class="btn-connect" onclick="saveSetup()">Connect →</button>
     <div id="setup-error" class="setup-error"></div>
   </div>
 </div>
 
-<!-- Main App -->
-<div id="app" style="display:none;">
+<!-- App -->
+<div id="app" style="display:none">
   <header>
-    <div class="logo"><span>STRING</span> Brain Review</div>
-    <div class="header-actions">
-      <button class="btn-icon" onclick="refreshAll()">↻ Refresh</button>
-      <button class="btn-icon" onclick="showSetup()">⚙ Token</button>
+    <div class="logo"><em>STRING</em> Brain</div>
+    <div class="hdr-right">
+      <button class="hdr-btn" onclick="refreshAll()">↻</button>
+      <button class="hdr-btn" onclick="openSettings()">⚙</button>
     </div>
   </header>
 
-  <div id="tabs">
+  <div id="screen">
+
+    <!-- Candidates tab -->
+    <div id="tab-candidates" class="tab-content">
+      <div class="list-header">
+        <div class="list-title">Candidates</div>
+        <div class="list-sub">Help doc drafts pending your approval</div>
+      </div>
+      <div class="list-body" id="list-candidates"></div>
+    </div>
+
+    <!-- Tickets tab -->
+    <div id="tab-tickets" class="tab-content" style="display:none">
+      <div class="list-header">
+        <div class="list-title">Unmatched</div>
+        <div class="list-sub">Tickets without a client match</div>
+      </div>
+      <div class="list-body" id="list-tickets"></div>
+    </div>
+
+    <!-- Errors tab -->
+    <div id="tab-errors" class="tab-content" style="display:none">
+      <div class="list-header">
+        <div class="list-title">Errors</div>
+        <div class="list-sub">Automation errors for review</div>
+      </div>
+      <div class="list-body" id="list-errors"></div>
+    </div>
+
+    <!-- Contacts tab -->
+    <div id="tab-contacts" class="tab-content" style="display:none">
+      <div class="list-header">
+        <div class="list-title">New Contacts</div>
+        <div class="list-sub">Unknown attendees from meetings and tickets</div>
+      </div>
+      <div class="list-body" id="list-contacts"></div>
+    </div>
+
+    <!-- Chat tab -->
+    <div id="tab-chat" class="tab-content" style="display:none; height: calc(100dvh - 52px - 64px);">
+      <div id="chat-view">
+        <div class="chat-messages" id="chat-messages">
+          <div class="chat-intro">
+            <div class="chat-intro-icon">🧠</div>
+            <div class="chat-intro-title">Ask STRING Brain</div>
+            <div class="chat-intro-sub">Ask about clients, get help writing content, or review something from the vault.</div>
+            <div class="chat-suggestions">
+              <div class="suggestion" onclick="sendSuggestion(this)">What did we discuss with EverSage last week?</div>
+              <div class="suggestion" onclick="sendSuggestion(this)">Draft a follow-up email for a new STRINGConnect client</div>
+              <div class="suggestion" onclick="sendSuggestion(this)">What help doc candidates are ready to approve?</div>
+              <div class="suggestion" onclick="sendSuggestion(this)">Summarize recent errors and their status</div>
+            </div>
+          </div>
+        </div>
+        <div class="chat-input-row">
+          <textarea class="chat-textarea" id="chat-input" placeholder="Ask something…" rows="1"
+            onkeydown="handleChatKey(event)" oninput="autoResize(this)"></textarea>
+          <button class="btn-send" onclick="sendChat()">
+            <svg viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+          </button>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- #screen -->
+
+  <!-- Bottom tab bar -->
+  <div id="tabbar">
     <div class="tab active" data-tab="candidates" onclick="switchTab('candidates')">
-      📄 Candidates <span id="badge-candidates" class="badge muted">–</span>
+      <div class="tab-icon">📄<span id="b-candidates" class="tab-badge hide">0</span></div>
+      <div class="tab-label">Review</div>
     </div>
     <div class="tab" data-tab="tickets" onclick="switchTab('tickets')">
-      🎫 Unmatched <span id="badge-tickets" class="badge muted">–</span>
+      <div class="tab-icon">🎫<span id="b-tickets" class="tab-badge hide">0</span></div>
+      <div class="tab-label">Tickets</div>
     </div>
     <div class="tab" data-tab="errors" onclick="switchTab('errors')">
-      ⚠️ Errors <span id="badge-errors" class="badge danger" style="display:none">–</span>
+      <div class="tab-icon">⚠️<span id="b-errors" class="tab-badge hide">0</span></div>
+      <div class="tab-label">Errors</div>
     </div>
     <div class="tab" data-tab="contacts" onclick="switchTab('contacts')">
-      👤 Contacts <span id="badge-contacts" class="badge muted">–</span>
+      <div class="tab-icon">👤<span id="b-contacts" class="tab-badge hide">0</span></div>
+      <div class="tab-label">Contacts</div>
+    </div>
+    <div class="tab" data-tab="chat" onclick="switchTab('chat')">
+      <div class="tab-icon">💬</div>
+      <div class="tab-label">Chat</div>
     </div>
   </div>
 
-  <main>
-    <div id="list-view">
-      <div class="refresh-row">
-        <button class="btn-refresh" onclick="loadCurrentTab()">↻ Reload</button>
-      </div>
-      <div id="list-content"></div>
+</div><!-- #app -->
+
+<!-- Detail Sheet -->
+<div id="detail-sheet">
+  <div class="sheet-handle"></div>
+  <div class="sheet-header">
+    <button class="sheet-back" onclick="closeSheet()">← Back</button>
+    <div class="sheet-title" id="sheet-title"></div>
+  </div>
+  <div class="sheet-body">
+    <div class="sheet-prose" id="sheet-prose"></div>
+  </div>
+  <div class="sheet-actions">
+    <div class="action-row" id="sheet-actions"></div>
+  </div>
+</div>
+
+<!-- Settings Sheet -->
+<div id="settings-sheet" onclick="e => { if(e.target===this) closeSettings(); }">
+  <div class="settings-card">
+    <div class="settings-title">Settings</div>
+    <div class="settings-row">
+      <div class="settings-label">GitHub Token</div>
+      <input class="settings-input" type="password" id="cfg-github" placeholder="ghp_...">
     </div>
-    <div id="detail" class="detail-view">
-      <div class="detail-back" onclick="closeDetail()">← Back</div>
-      <div class="detail-card">
-        <div class="detail-header">
-          <div class="detail-title" id="detail-title"></div>
-          <div class="detail-meta" id="detail-meta"></div>
-        </div>
-        <div class="detail-body" id="detail-body"></div>
-        <div class="detail-actions" id="detail-actions"></div>
-      </div>
+    <div class="settings-row">
+      <div class="settings-label">Vault Repo</div>
+      <input class="settings-input" type="text" id="cfg-repo">
     </div>
-  </main>
+    <div class="settings-row">
+      <div class="settings-label">Claude API Key</div>
+      <input class="settings-input" type="password" id="cfg-claude" placeholder="sk-ant-...">
+    </div>
+    <button class="btn-save" onclick="saveSettings()">Save</button>
+    <button class="btn-cancel" onclick="closeSettings()">Cancel</button>
+  </div>
 </div>
 
 <div id="toast"></div>
@@ -195,290 +355,383 @@ const FOLDERS = {
   errors:     'Review/errors',
   contacts:   'Review/new-contacts',
 };
-const APPROVE_DEST = {
-  candidates: 'Help Docs/drafts',
-};
+const APPROVE_DEST = { candidates: 'Help Docs/drafts' };
+const TAB_ICONS  = { candidates:'📄', tickets:'🎫', errors:'⚠️', contacts:'👤' };
+const PILL_CLASS = { technical:'pill-tech', billing:'pill-billing', onboarding:'pill-onboard', general:'pill-general',
+                     candidates:'pill-cand', tickets:'pill-ticket', errors:'pill-error', contacts:'pill-contact' };
 
-let TOKEN = '';
-let REPO  = '';
+let TOKEN = '', REPO = '', CLAUDE_KEY = '';
 let currentTab = 'candidates';
 let currentFile = null;
-let tabCache = {};
+let chatHistory = [];
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 window.onload = () => {
-  TOKEN = localStorage.getItem('sb_token') || '';
-  REPO  = localStorage.getItem('sb_repo')  || 'stephaniehofhenke/string-marketing-vault';
-  if (TOKEN) {
-    document.getElementById('token-input').value = TOKEN;
-    document.getElementById('repo-input').value  = REPO;
-    launchApp();
+  TOKEN      = ls('sb_github') || '';
+  REPO       = ls('sb_repo')   || 'stephaniehofhenke/string-marketing-vault';
+  CLAUDE_KEY = ls('sb_claude') || '';
+  if (TOKEN && REPO) {
+    document.getElementById('setup').style.display = 'none';
+    document.getElementById('app').style.display = 'flex';
+    document.getElementById('app').style.flexDirection = 'column';
+    refreshAll();
+  } else {
+    // Pre-fill
+    document.getElementById('s-repo').value = REPO;
   }
 };
 
-async function saveToken() {
-  const t = document.getElementById('token-input').value.trim();
-  const r = document.getElementById('repo-input').value.trim();
-  if (!t || !r) { showSetupError('Both fields required.'); return; }
-  // Quick validation
-  const res = await ghFetch(`/repos/${r}`);
-  if (!res.ok) { showSetupError('Could not connect. Check token and repo name.'); return; }
-  TOKEN = t; REPO = r;
-  localStorage.setItem('sb_token', TOKEN);
-  localStorage.setItem('sb_repo',  REPO);
-  launchApp();
-}
-
-function showSetup() {
-  document.getElementById('setup-overlay').style.display = 'flex';
-  document.getElementById('app').style.display = 'none';
-}
-
-function launchApp() {
-  document.getElementById('setup-overlay').style.display = 'none';
-  document.getElementById('app').style.display = 'block';
+async function saveSetup() {
+  const t = v('s-github'), r = v('s-repo'), c = v('s-claude');
+  if (!t || !r) { err('setup-error','GitHub token and repo are required.'); return; }
+  const ok = await testGitHub(t, r);
+  if (!ok) { err('setup-error','Cannot connect to GitHub. Check token and repo.'); return; }
+  TOKEN = t; REPO = r; CLAUDE_KEY = c;
+  sls('sb_github', t); sls('sb_repo', r); sls('sb_claude', c);
+  document.getElementById('setup').style.display = 'none';
+  document.getElementById('app').style.display = 'flex';
+  document.getElementById('app').style.flexDirection = 'column';
   refreshAll();
 }
 
-function showSetupError(msg) {
-  const el = document.getElementById('setup-error');
-  el.textContent = msg;
-  el.style.display = 'block';
+// ── Settings ──────────────────────────────────────────────────────────────────
+function openSettings() {
+  document.getElementById('cfg-github').value = TOKEN;
+  document.getElementById('cfg-repo').value   = REPO;
+  document.getElementById('cfg-claude').value = CLAUDE_KEY;
+  document.getElementById('settings-sheet').classList.add('open');
+}
+function closeSettings() { document.getElementById('settings-sheet').classList.remove('open'); }
+async function saveSettings() {
+  const t = v('cfg-github'), r = v('cfg-repo'), c = v('cfg-claude');
+  TOKEN = t; REPO = r; CLAUDE_KEY = c;
+  sls('sb_github', t); sls('sb_repo', r); sls('sb_claude', c);
+  closeSettings();
+  showToast('Settings saved');
+  refreshAll();
 }
 
 // ── GitHub API ────────────────────────────────────────────────────────────────
-async function ghFetch(path, opts = {}) {
+async function gh(path, opts = {}) {
   const url = path.startsWith('http') ? path : `https://api.github.com${path}`;
-  return fetch(url, {
+  const res = await fetch(url, {
     ...opts,
-    headers: {
-      'Authorization': `token ${TOKEN}`,
-      'Accept':        'application/vnd.github+json',
-      'X-GitHub-Api-Version': '2022-11-28',
-      ...(opts.headers || {}),
-    }
+    headers: { 'Authorization': `token ${TOKEN}`, 'Accept': 'application/vnd.github+json',
+               'X-GitHub-Api-Version': '2022-11-28', ...(opts.headers || {}) }
   });
+  return { ok: res.ok, status: res.status, data: res.ok ? await res.json() : null };
 }
 
-async function listFolder(folder) {
-  const res = await ghFetch(`/repos/${REPO}/contents/${encodeURIComponent(folder)}`);
-  if (!res.ok) return [];
-  const data = await res.json();
-  return Array.isArray(data) ? data.filter(f => f.name.endsWith('.md')) : [];
-}
-
-async function readFile(path) {
-  const res = await ghFetch(`/repos/${REPO}/contents/${encodeURIComponent(path)}`);
-  if (!res.ok) return null;
-  return res.json();
-}
-
-async function deleteFile(path, sha, message) {
-  const res = await ghFetch(`/repos/${REPO}/contents/${encodeURIComponent(path)}`, {
-    method: 'DELETE',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message, sha })
-  });
+async function testGitHub(t, r) {
+  const res = await fetch(`https://api.github.com/repos/${r}`,
+    { headers: { 'Authorization': `token ${t}`, 'Accept': 'application/vnd.github+json' } });
   return res.ok;
 }
 
-async function moveFile(srcPath, destFolder, filename, sha, content, message) {
-  // 1. Write to new location
-  const dest = `${destFolder}/${filename}`;
-  const putRes = await ghFetch(`/repos/${REPO}/contents/${encodeURIComponent(dest)}`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message, content })
+async function listFolder(folder) {
+  const r = await gh(`/repos/${REPO}/contents/${encodeURIComponent(folder)}`);
+  if (!r.ok || !Array.isArray(r.data)) return [];
+  return r.data.filter(f => f.name.endsWith('.md'));
+}
+
+async function readFile(path) {
+  const r = await gh(`/repos/${REPO}/contents/${encodeURIComponent(path)}`);
+  return r.ok ? r.data : null;
+}
+
+async function deleteFile(path, sha, msg) {
+  const r = await gh(`/repos/${REPO}/contents/${encodeURIComponent(path)}`, {
+    method: 'DELETE', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ message: msg, sha })
   });
-  if (!putRes.ok) return false;
-  // 2. Delete from old location
-  return deleteFile(srcPath, sha, `Remove from queue: ${filename}`);
+  return r.ok;
+}
+
+async function putFile(path, content, msg, sha) {
+  const body = { message: msg, content };
+  if (sha) body.sha = sha;
+  const r = await gh(`/repos/${REPO}/contents/${encodeURIComponent(path)}`, {
+    method: 'PUT', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify(body)
+  });
+  return r.ok;
 }
 
 // ── Tabs ──────────────────────────────────────────────────────────────────────
 function switchTab(tab) {
+  // Hide all
+  document.querySelectorAll('.tab-content').forEach(el => el.style.display = 'none');
+  document.querySelectorAll('.tab').forEach(el => el.classList.toggle('active', el.dataset.tab === tab));
   currentTab = tab;
-  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
-  closeDetail();
-  loadCurrentTab();
+
+  if (tab === 'chat') {
+    document.getElementById('tab-chat').style.display = 'block';
+    document.getElementById('tab-chat').style.height = 'calc(100dvh - 52px - 64px)';
+    document.getElementById('screen').classList.add('no-scroll');
+  } else {
+    document.getElementById(`tab-${tab}`).style.display = 'block';
+    document.getElementById('screen').classList.remove('no-scroll');
+    loadTab(tab);
+  }
 }
 
 async function refreshAll() {
-  for (const tab of Object.keys(FOLDERS)) {
-    loadTabBadge(tab);
+  for (const t of ['candidates','tickets','errors','contacts']) {
+    loadTabBadge(t);
   }
-  loadCurrentTab();
+  if (currentTab !== 'chat') loadTab(currentTab);
 }
 
 async function loadTabBadge(tab) {
   const files = await listFolder(FOLDERS[tab]);
-  const count = files.length;
-  const badge = document.getElementById(`badge-${tab}`);
+  const badge = document.getElementById(`b-${tab}`);
   if (!badge) return;
-  badge.textContent = count;
-  badge.style.display = count === 0 ? 'none' : '';
-  badge.className = 'badge' + (tab === 'errors' && count > 0 ? ' danger' : tab === 'tickets' ? ' warn' : count === 0 ? ' muted' : '');
+  if (files.length > 0) {
+    badge.textContent = files.length;
+    badge.classList.remove('hide');
+  } else {
+    badge.classList.add('hide');
+  }
 }
 
-async function loadCurrentTab() {
-  const content = document.getElementById('list-content');
-  content.innerHTML = '<div class="loading"><div class="spinner"></div>Loading…</div>';
-  const files = await listFolder(FOLDERS[currentTab]);
-  tabCache[currentTab] = files;
-  renderList(files);
+async function loadTab(tab) {
+  const el = document.getElementById(`list-${tab}`);
+  if (!el) return;
+  el.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+  const files = await listFolder(FOLDERS[tab]);
+  renderList(tab, files, el);
 }
 
-function renderList(files) {
-  const content = document.getElementById('list-content');
-  if (files.length === 0) {
-    const icons = { candidates: '✅', tickets: '📭', errors: '🟢', contacts: '👍' };
-    const msgs  = { candidates: 'No candidates pending', tickets: 'No unmatched tickets', errors: 'No errors logged', contacts: 'No new contacts' };
-    content.innerHTML = `<div class="empty"><div class="empty-icon">${icons[currentTab]}</div><div class="empty-msg">${msgs[currentTab]}</div><div class="empty-sub">All clear</div></div>`;
+function renderList(tab, files, el) {
+  if (!files.length) {
+    const msgs = { candidates:'No candidates pending', tickets:'No unmatched tickets', errors:'No errors', contacts:'No new contacts' };
+    el.innerHTML = `<div class="empty"><div class="empty-icon">✅</div><div class="empty-title">${msgs[tab]}</div><div class="empty-sub">All clear</div></div>`;
     return;
   }
-
-  content.innerHTML = files.map(f => {
-    // Parse date and title from filename pattern YYYY-MM-DD-...-slug.md
-    const parts = f.name.replace('.md','').split('-');
+  el.innerHTML = files.map(f => {
+    const name  = f.name.replace('.md','');
+    const parts = name.split('-');
     const date  = parts.slice(0,3).join('-');
-    const title = parts.slice(3).join(' ').replace(/-/g,' ') || f.name;
-    const typeChip = currentTab === 'candidates' ? 'type-candidate' : currentTab === 'tickets' ? 'type-ticket' : currentTab === 'errors' ? 'type-error' : 'type-contact';
-    return `
-<div class="card" onclick="openDetail('${f.path}', '${escHtml(f.name)}')">
-  <div class="card-header">
-    <div class="card-title">${escHtml(humanTitle(f.name))}</div>
-  </div>
-  <div class="card-meta">
-    <span class="chip ${typeChip}">${currentTab.slice(0,-1)}</span>
-    <span class="chip">${date || '—'}</span>
-  </div>
-</div>`;
+    const title = humanTitle(f.name);
+    const pClass = PILL_CLASS[tab] || 'pill-general';
+    return `<div class="card" onclick="openSheet('${esc(f.path)}','${esc(f.name)}')">
+      <div class="card-icon">${TAB_ICONS[tab] || '📄'}</div>
+      <div class="card-body">
+        <div class="card-title">${esc2(title)}</div>
+        <div class="card-meta">
+          <span class="pill ${pClass}">${tab.slice(0,-1)}</span>
+          <span style="color:var(--muted)">${date}</span>
+        </div>
+      </div>
+      <div class="card-arrow">›</div>
+    </div>`;
   }).join('');
 }
 
-// ── Detail ────────────────────────────────────────────────────────────────────
-async function openDetail(path, filename) {
-  document.getElementById('list-view').style.display = 'none';
-  const detail = document.getElementById('detail');
-  detail.classList.add('open');
-
-  document.getElementById('detail-title').textContent = humanTitle(filename);
-  document.getElementById('detail-meta').innerHTML = `<span class="chip">Loading…</span>`;
-  document.getElementById('detail-body').innerHTML = '<div class="loading"><div class="spinner"></div></div>';
-  document.getElementById('detail-actions').innerHTML = '';
+// ── Detail Sheet ──────────────────────────────────────────────────────────────
+async function openSheet(path, filename) {
+  currentFile = null;
+  document.getElementById('sheet-title').textContent = humanTitle(filename);
+  document.getElementById('sheet-prose').innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+  document.getElementById('sheet-actions').innerHTML = '';
+  document.getElementById('detail-sheet').classList.add('open');
 
   const file = await readFile(path);
   if (!file) {
-    document.getElementById('detail-body').textContent = 'Could not load file.';
+    document.getElementById('sheet-prose').innerHTML = '<p style="color:var(--muted)">Could not load file.</p>';
     return;
   }
   currentFile = { path, filename, sha: file.sha, content: file.content };
-
-  // Decode + render
-  const raw = atob(file.content.replace(/\n/g, ''));
-  document.getElementById('detail-meta').innerHTML = `<span class="chip">${currentTab}</span><span class="chip">${path.split('/').slice(-2)[0]}</span>`;
-  document.getElementById('detail-body').innerHTML = renderMarkdown(raw);
-
-  // Action buttons
-  buildActions(path, filename, file.sha, file.content);
+  const raw = atob(file.content.replace(/\n/g,''));
+  document.getElementById('sheet-prose').innerHTML = mdToHtml(raw);
+  buildSheetActions(path, filename, file.sha, file.content);
 }
 
-function closeDetail() {
-  document.getElementById('detail').classList.remove('open');
-  document.getElementById('list-view').style.display = 'block';
-  currentFile = null;
+function closeSheet() {
+  document.getElementById('detail-sheet').classList.remove('open');
 }
 
-function buildActions(path, filename, sha, content) {
-  const el = document.getElementById('detail-actions');
+function buildSheetActions(path, filename, sha, content) {
+  const el = document.getElementById('sheet-actions');
   if (currentTab === 'candidates') {
     el.innerHTML = `
-      <button class="btn-approve" onclick="approveCandidate('${escHtml(path)}','${escHtml(filename)}','${sha}')">✓ Approve → Drafts</button>
-      <button class="btn-reject"  onclick="rejectFile('${escHtml(path)}','${sha}','${escHtml(filename)}')">✕ Reject</button>
-    `;
+      <button class="btn-action btn-approve" onclick="approveCandidate()">✓ Approve</button>
+      <button class="btn-action btn-reject"  onclick="rejectCurrent()">✕ Reject</button>`;
   } else if (currentTab === 'errors') {
     el.innerHTML = `
-      <button class="btn-approve" onclick="rejectFile('${escHtml(path)}','${sha}','${escHtml(filename)}')">✓ Mark Resolved</button>
-      <button class="btn-archive" onclick="closeDetail()">← Back</button>
-    `;
+      <button class="btn-action btn-approve" onclick="rejectCurrent()">✓ Resolved</button>
+      <button class="btn-action btn-secondary" onclick="closeSheet()">Close</button>`;
   } else if (currentTab === 'tickets') {
     el.innerHTML = `
-      <button class="btn-archive" onclick="rejectFile('${escHtml(path)}','${sha}','${escHtml(filename)}')">Archive</button>
-      <button class="btn-archive" onclick="closeDetail()">← Back</button>
-    `;
+      <button class="btn-action btn-warn" onclick="rejectCurrent()">Archive</button>
+      <button class="btn-action btn-secondary" onclick="closeSheet()">Close</button>`;
   } else {
     el.innerHTML = `
-      <button class="btn-reject"  onclick="rejectFile('${escHtml(path)}','${sha}','${escHtml(filename)}')">✕ Dismiss</button>
-      <button class="btn-archive" onclick="closeDetail()">← Back</button>
-    `;
+      <button class="btn-action btn-reject" onclick="rejectCurrent()">Dismiss</button>
+      <button class="btn-action btn-secondary" onclick="closeSheet()">Close</button>`;
   }
 }
 
-async function approveCandidate(path, filename, sha) {
+async function approveCandidate() {
+  if (!currentFile) return;
   showToast('Moving to drafts…');
-  const file = await readFile(path);
-  if (!file) { showToast('Error reading file', 'error'); return; }
-  const ok = await moveFile(path, APPROVE_DEST.candidates, filename, sha, file.content, `Approved: ${filename}`);
+  const ok = await putFile(
+    `${APPROVE_DEST.candidates}/${currentFile.filename}`,
+    currentFile.content,
+    `Approved: ${currentFile.filename}`
+  );
+  if (!ok) { showToast('Failed ✕'); return; }
+  await deleteFile(currentFile.path, currentFile.sha, `Remove candidate: ${currentFile.filename}`);
+  showToast('Moved to Help Docs/drafts ✓');
+  closeSheet();
+  loadTab(currentTab);
+  loadTabBadge(currentTab);
+}
+
+async function rejectCurrent() {
+  if (!currentFile) return;
+  if (!confirm(`Remove "${humanTitle(currentFile.filename)}"?`)) return;
+  const ok = await deleteFile(currentFile.path, currentFile.sha, `Rejected: ${currentFile.filename}`);
   if (ok) {
-    showToast('Moved to Help Docs/drafts ✓', 'success');
-    closeDetail();
-    loadCurrentTab();
+    showToast('Removed ✓');
+    closeSheet();
+    loadTab(currentTab);
     loadTabBadge(currentTab);
   } else {
-    showToast('Failed to move file', 'error');
+    showToast('Failed ✕');
   }
 }
 
-async function rejectFile(path, sha, filename) {
-  if (!confirm(`Delete "${humanTitle(filename)}"?`)) return;
-  const ok = await deleteFile(path, sha, `Rejected: ${filename}`);
-  if (ok) {
-    showToast('Removed ✓', 'success');
-    closeDetail();
-    loadCurrentTab();
-    loadTabBadge(currentTab);
-  } else {
-    showToast('Delete failed', 'error');
+// ── Chat ──────────────────────────────────────────────────────────────────────
+const CHAT_SYSTEM = `You are STRING Brain — the AI assistant for STRING Marketing, a digital marketing agency serving nutrition and wellness private practices.
+
+You help Stephanie (the founder) with:
+- Client context and history
+- Drafting emails, follow-ups, and content
+- Reviewing and approving help docs
+- Understanding what's in the vault
+- General business questions
+
+STRING services: STRINGConnect ($97-197/mo GHL platform), STRINGFlow ($59/mo), Connected Practice Audit ($1,500), Connected Practice Build, Digital Elevation (website).
+
+Be concise, direct, and actionable. No fluff. When drafting content, produce it ready to copy-paste.`;
+
+async function sendChat() {
+  const input = document.getElementById('chat-input');
+  const msg   = input.value.trim();
+  if (!msg) return;
+  input.value = '';
+  input.style.height = '';
+
+  appendBubble('user', msg);
+  chatHistory.push({ role: 'user', content: msg });
+  document.querySelector('.chat-intro')?.remove();
+
+  if (!CLAUDE_KEY) {
+    appendBubble('assistant', 'No Claude API key set. Add it in ⚙ Settings to use chat.');
+    return;
   }
+
+  const typing = appendBubble('assistant', '…', true);
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': CLAUDE_KEY,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5',
+        max_tokens: 1500,
+        system: CHAT_SYSTEM,
+        messages: chatHistory,
+      })
+    });
+    const data = await res.json();
+    const reply = data.content?.[0]?.text || 'No response.';
+    typing.querySelector('.bubble-inner').innerHTML = mdToHtml(reply);
+    chatHistory.push({ role: 'assistant', content: reply });
+  } catch (e) {
+    typing.querySelector('.bubble-inner').textContent = 'Error: ' + e.message;
+  }
+  scrollChat();
 }
 
-// ── Markdown renderer (lightweight) ──────────────────────────────────────────
-function renderMarkdown(md) {
-  return md
-    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
-    // Code blocks
-    .replace(/```[\s\S]*?```/g, m => `<pre>${m.slice(3,-3).trim()}</pre>`)
-    // Inline code
-    .replace(/`([^`]+)`/g, '<code>$1</code>')
-    // Headers
-    .replace(/^#### (.+)$/gm,'<h4>$1</h4>')
-    .replace(/^### (.+)$/gm,'<h3>$1</h3>')
-    .replace(/^## (.+)$/gm,'<h2>$1</h2>')
-    .replace(/^# (.+)$/gm,'<h1>$1</h1>')
-    // Bold
-    .replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>')
-    // HR
-    .replace(/^---+$/gm,'<hr>')
-    // Frontmatter block (dim it)
-    .replace(/^(---\n[\s\S]*?\n---)/m, '<pre style="opacity:0.45;font-size:11px">$1</pre>')
-    // Line breaks
-    .replace(/\n/g,'<br>');
+function appendBubble(role, text, isTyping = false) {
+  const msgs = document.getElementById('chat-messages');
+  const now  = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const el   = document.createElement('div');
+  el.className = `chat-bubble ${role}`;
+  el.innerHTML = `<div class="bubble-inner">${isTyping ? text : mdToHtml(text)}</div><div class="bubble-time">${now}</div>`;
+  msgs.appendChild(el);
+  scrollChat();
+  return el;
+}
+
+function scrollChat() {
+  const msgs = document.getElementById('chat-messages');
+  msgs.scrollTop = msgs.scrollHeight;
+}
+
+function sendSuggestion(el) {
+  document.getElementById('chat-input').value = el.textContent;
+  sendChat();
+}
+
+function handleChatKey(e) {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); }
+}
+
+function autoResize(el) {
+  el.style.height = '';
+  el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+}
+
+// ── Markdown renderer ─────────────────────────────────────────────────────────
+function mdToHtml(md) {
+  let s = md.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  s = s.replace(/```[\s\S]*?```/g, m => `<pre>${m.slice(3,-3).trim()}</pre>`);
+  s = s.replace(/`([^`]+)`/g,'<code>$1</code>');
+  s = s.replace(/^#### (.+)$/gm,'<h4>$1</h4>');
+  s = s.replace(/^### (.+)$/gm,'<h3>$1</h3>');
+  s = s.replace(/^## (.+)$/gm,'<h2>$1</h2>');
+  s = s.replace(/^# (.+)$/gm,'<h1>$1</h1>');
+  s = s.replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>');
+  s = s.replace(/\*([^*]+)\*/g,'<em>$1</em>');
+  s = s.replace(/^---+$/gm,'<hr>');
+  s = s.replace(/^\- (.+)$/gm,'<li>$1</li>');
+  s = s.replace(/(<li>.*<\/li>)/s, '<ul>$1</ul>');
+  // Dim frontmatter
+  s = s.replace(/^(---\n[\s\S]*?\n---)/m,'<pre style="opacity:0.4;font-size:11px">$1</pre>');
+  s = s.replace(/\n/g,'<br>');
+  return s;
+}
+
+// ── Toast ─────────────────────────────────────────────────────────────────────
+let toastTimer;
+function showToast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 2500);
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function humanTitle(filename) {
-  return filename.replace('.md','').replace(/^\d{4}-\d{2}-\d{2}-\d+-?/, '').replace(/-/g,' ').replace(/\b\w/g, c => c.toUpperCase()) || filename;
+  return filename.replace('.md','')
+    .replace(/^\d{4}-\d{2}-\d{2}-\d+-?/,'')
+    .replace(/-/g,' ')
+    .replace(/\b\w/g, c => c.toUpperCase()) || filename;
 }
-function escHtml(s) { return (s||'').replace(/'/g,"\\'").replace(/"/g,'&quot;'); }
-
-let toastTimer;
-function showToast(msg, type = '') {
-  const el = document.getElementById('toast');
-  el.textContent = msg;
-  el.className = `show ${type}`;
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => el.className = '', 3000);
-}
+function esc(s)  { return (s||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'"); }
+function esc2(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;'); }
+function v(id)   { return document.getElementById(id)?.value?.trim() || ''; }
+function ls(k)   { try { return localStorage.getItem(k); } catch { return ''; } }
+function sls(k,v){ try { localStorage.setItem(k,v); } catch {} }
+function err(id, msg) { const el = document.getElementById(id); if(el){el.textContent=msg;el.style.display='block';} }
 </script>
 </body>
 </html>
