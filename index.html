@@ -5,37 +5,43 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>STRING Brain</title>
   <style>
-    /* ── Design tokens ── */
+    /* ── Design tokens — STRING brand ── */
     :root {
-      --bg:       #f2f2f7;
-      --surface:  #ffffff;
-      --surface2: #f9f9fb;
-      --border:   rgba(0,0,0,0.08);
-      --text:     #1c1c1e;
-      --text2:    #3a3a3c;
-      --muted:    #8e8e93;
-      --accent:   #5856d6;
+      --bg:       #F1EFE7;
+      --surface:  #FFFFFF;
+      --surface2: #F2EFDA;
+      --border:   rgba(52,52,62,0.1);
+      --text:     #34343E;
+      --text2:    #4A4A56;
+      --muted:    #8A8A96;
+      --accent:   #CCBE6D;
+      --accent-dark: #A89E50;
       --green:    #34c759;
-      --red:      #ff3b30;
-      --orange:   #ff9500;
-      --blue:     #007aff;
-      --teal:     #32ade6;
+      --red:      #B52025;
+      --orange:   #D4862A;
+      --blue:     #3BA9D0;
+      --teal:     #1C5967;
       --r-card:   14px;
       --r-btn:    12px;
-      --shadow:   0 2px 12px rgba(0,0,0,0.07);
-      --shadow-lg:0 8px 32px rgba(0,0,0,0.12);
+      --shadow:   0 2px 12px rgba(52,52,62,0.08);
+      --shadow-lg:0 8px 32px rgba(52,52,62,0.14);
       --font: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Helvetica, Arial, sans-serif;
       --trans: 0.18s cubic-bezier(0.25,0.46,0.45,0.94);
     }
     @media (prefers-color-scheme: dark) {
       :root {
-        --bg:       #1c1c1e;
-        --surface:  #2c2c2e;
-        --surface2: #3a3a3c;
+        --bg:       #1C2830;
+        --surface:  #243540;
+        --surface2: #2C3E4C;
         --border:   rgba(255,255,255,0.1);
-        --text:     #f2f2f7;
-        --text2:    #ebebf5cc;
-        --muted:    #8e8e93;
+        --text:     #F1EFE7;
+        --text2:    rgba(241,239,231,0.75);
+        --muted:    #8e9ea8;
+        --accent:   #CCBE6D;
+        --accent-dark: #B8AA56;
+        --red:      #E84040;
+        --blue:     #3BA9D0;
+        --teal:     #4DB8CC;
       }
     }
 
@@ -57,12 +63,15 @@
     .field label { display: block; font-size: 13px; font-weight: 600; color: var(--muted); margin-bottom: 5px; letter-spacing: 0.3px; text-transform: uppercase; }
     .field input { width: 100%; background: var(--bg); border: 1.5px solid var(--border); color: var(--text); border-radius: 10px; padding: 12px 14px; font-size: 15px; outline: none; font-family: var(--font); transition: border-color var(--trans); }
     .field input:focus { border-color: var(--accent); }
-    .btn-connect { background: var(--accent); color: #fff; border: none; border-radius: 12px; padding: 14px 20px; font-size: 16px; font-weight: 600; cursor: pointer; width: 100%; margin-top: 20px; transition: opacity var(--trans); }
+    .btn-connect { background: var(--teal); color: #fff; border: none; border-radius: 12px; padding: 14px 20px; font-size: 16px; font-weight: 600; cursor: pointer; width: 100%; margin-top: 20px; transition: opacity var(--trans); }
     .btn-connect:active { opacity: 0.8; }
     .setup-error { color: var(--red); font-size: 13px; margin-top: 10px; text-align: center; }
 
     /* ── Header ── */
-    header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 0 20px; height: 52px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 50; }
+    header { background: var(--teal); border-bottom: none; padding: 0 20px; height: 52px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 50; }
+    .logo { color: #fff !important; }
+    .logo em { color: var(--accent) !important; }
+    .hdr-btn { color: rgba(255,255,255,0.85) !important; }
     .logo { font-size: 17px; font-weight: 700; letter-spacing: -0.3px; }
     .logo em { color: var(--accent); font-style: normal; }
     .hdr-btn { background: none; border: none; color: var(--accent); font-size: 15px; cursor: pointer; padding: 6px 2px; font-family: var(--font); }
@@ -71,10 +80,10 @@
     /* ── Tab bar ── */
     #tabbar { background: var(--surface); border-top: 1px solid var(--border); display: flex; height: 64px; padding-bottom: env(safe-area-inset-bottom); position: sticky; bottom: 0; z-index: 50; }
     .tab { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; cursor: pointer; color: var(--muted); transition: color var(--trans); padding: 6px 0; }
-    .tab.active { color: var(--accent); }
+    .tab.active { color: var(--teal); }
     .tab-icon { font-size: 22px; line-height: 1; position: relative; }
     .tab-label { font-size: 10px; font-weight: 500; letter-spacing: 0.1px; }
-    .tab-badge { position: absolute; top: -4px; right: -8px; background: var(--red); color: #fff; border-radius: 99px; font-size: 10px; font-weight: 700; padding: 1px 5px; min-width: 17px; text-align: center; line-height: 15px; border: 2px solid var(--surface); }
+    .tab-badge { position: absolute; top: -4px; right: -8px; background: var(--teal); color: #fff; border-radius: 99px; font-size: 10px; font-weight: 700; padding: 1px 5px; min-width: 17px; text-align: center; line-height: 15px; border: 2px solid var(--surface); }
     .tab-badge.hide { display: none; }
 
     /* ── List view ── */
@@ -96,9 +105,9 @@
     .pill-billing { background: rgba(255,149,0,0.12); color: var(--orange); }
     .pill-onboard { background: rgba(52,199,89,0.12); color: var(--green); }
     .pill-general { background: rgba(142,142,147,0.12); color: var(--muted); }
-    .pill-cand    { background: rgba(88,86,214,0.12); color: var(--accent); }
-    .pill-ticket  { background: rgba(50,173,230,0.12); color: var(--teal); }
-    .pill-error   { background: rgba(255,59,48,0.12); color: var(--red); }
+    .pill-cand    { background: rgba(204,190,109,0.18); color: var(--accent-dark); }
+    .pill-ticket  { background: rgba(59,169,208,0.15); color: var(--blue); }
+    .pill-error   { background: rgba(181,32,37,0.12); color: var(--red); }
     .pill-contact { background: rgba(52,199,89,0.12); color: var(--green); }
 
     /* ── Empty state ── */
@@ -132,8 +141,8 @@
     .action-row { display: flex; gap: 10px; }
     .btn-action { flex: 1; border: none; border-radius: var(--r-btn); padding: 14px 12px; font-size: 16px; font-weight: 600; cursor: pointer; font-family: var(--font); transition: opacity var(--trans); }
     .btn-action:active { opacity: 0.7; }
-    .btn-approve { background: var(--green); color: #fff; }
-    .btn-reject  { background: rgba(255,59,48,0.12); color: var(--red); }
+    .btn-approve { background: var(--teal); color: #fff; }
+    .btn-reject  { background: rgba(181,32,37,0.12); color: var(--red); }
     .btn-secondary { background: var(--surface2); color: var(--text2); }
     .btn-warn    { background: rgba(255,149,0,0.12); color: var(--orange); }
 
@@ -143,14 +152,14 @@
     .chat-bubble { max-width: 82%; margin-bottom: 14px; }
     .chat-bubble.user { margin-left: auto; }
     .bubble-inner { padding: 12px 16px; border-radius: 18px; font-size: 15px; line-height: 1.5; }
-    .chat-bubble.user .bubble-inner { background: var(--accent); color: #fff; border-bottom-right-radius: 4px; }
+    .chat-bubble.user .bubble-inner { background: var(--teal); color: #fff; border-bottom-right-radius: 4px; }
     .chat-bubble.assistant .bubble-inner { background: var(--surface); color: var(--text); border-bottom-left-radius: 4px; box-shadow: var(--shadow); }
     .bubble-time { font-size: 11px; color: var(--muted); margin-top: 4px; padding: 0 4px; }
     .chat-bubble.user .bubble-time { text-align: right; }
     .chat-input-row { padding: 10px 12px; border-top: 1px solid var(--border); background: var(--surface); display: flex; gap: 10px; align-items: flex-end; padding-bottom: calc(10px + env(safe-area-inset-bottom)); }
     .chat-textarea { flex: 1; background: var(--bg); border: 1.5px solid var(--border); border-radius: 20px; padding: 10px 16px; font-size: 15px; font-family: var(--font); color: var(--text); outline: none; resize: none; max-height: 120px; line-height: 1.5; transition: border-color var(--trans); }
     .chat-textarea:focus { border-color: var(--accent); }
-    .btn-send { background: var(--accent); border: none; border-radius: 50%; width: 38px; height: 38px; display: flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0; transition: opacity var(--trans); }
+    .btn-send { background: var(--teal); border: none; border-radius: 50%; width: 38px; height: 38px; display: flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0; transition: opacity var(--trans); }
     .btn-send:active { opacity: 0.7; }
     .btn-send svg { fill: #fff; width: 16px; height: 16px; }
     .chat-intro { text-align: center; padding: 40px 24px; }
@@ -174,7 +183,7 @@
     .settings-label { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 6px; }
     .settings-input { width: 100%; background: var(--bg); border: 1.5px solid var(--border); color: var(--text); border-radius: 10px; padding: 11px 14px; font-size: 14px; outline: none; font-family: var(--font); }
     .settings-input:focus { border-color: var(--accent); }
-    .btn-save { background: var(--accent); color: #fff; border: none; border-radius: 12px; padding: 14px; font-size: 16px; font-weight: 600; cursor: pointer; width: 100%; margin-top: 8px; font-family: var(--font); }
+    .btn-save { background: var(--teal); color: #fff; border: none; border-radius: 12px; padding: 14px; font-size: 16px; font-weight: 600; cursor: pointer; width: 100%; margin-top: 8px; font-family: var(--font); }
     .btn-cancel { background: none; color: var(--muted); border: none; font-size: 15px; cursor: pointer; width: 100%; padding: 10px; margin-top: 4px; font-family: var(--font); }
 
     @media (min-width: 640px) {
