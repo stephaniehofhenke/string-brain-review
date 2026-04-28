@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>STRING Brain Review</title>
+  <style>
+    :root {
+      --bg:        #0f1117;
+      --surface:   #1a1d27;
+      --border:    #2a2d3d;
+      --accent:    #6c63ff;
+      --accent2:   #00d4aa;
+      --danger:    #ff4d6d;
+      --warn:      #ffb700;
+      --text:      #e8eaf0;
+      --muted:     #7b7f96;
+      --green:     #2ecc71;
+      --card-r:    12px;
+      --trans:     0.18s ease;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; min-height: 100vh; }
+
+    /* ── Header ── */
+    header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 0 20px; display: flex; align-items: center; justify-content: space-between; height: 56px; position: sticky; top: 0; z-index: 100; }
+    .logo { font-size: 17px; font-weight: 700; letter-spacing: -0.3px; }
+    .logo span { color: var(--accent); }
+    .header-actions { display: flex; gap: 10px; align-items: center; }
+    .btn-icon { background: none; border: 1px solid var(--border); color: var(--muted); border-radius: 8px; padding: 6px 10px; cursor: pointer; font-size: 14px; transition: var(--trans); }
+    .btn-icon:hover { color: var(--text); border-color: var(--accent); }
+
+    /* ── Setup overlay ── */
+    #setup-overlay { position: fixed; inset: 0; background: var(--bg); z-index: 999; display: flex; align-items: center; justify-content: center; padding: 24px; }
+    .setup-card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 36px; max-width: 440px; width: 100%; }
+    .setup-card h2 { font-size: 22px; margin-bottom: 8px; }
+    .setup-card p  { color: var(--muted); font-size: 14px; line-height: 1.6; margin-bottom: 24px; }
+    .field-label { font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+    .field-input { width: 100%; background: var(--bg); border: 1px solid var(--border); color: var(--text); border-radius: 8px; padding: 10px 14px; font-size: 14px; outline: none; transition: var(--trans); }
+    .field-input:focus { border-color: var(--accent); }
+    .btn-primary { background: var(--accent); color: #fff; border: none; border-radius: 8px; padding: 12px 20px; font-size: 15px; font-weight: 600; cursor: pointer; width: 100%; margin-top: 16px; transition: var(--trans); }
+    .btn-primary:hover { opacity: 0.88; }
+    .setup-error { color: var(--danger); font-size: 13px; margin-top: 10px; display: none; }
+
+    /* ── Tabs ── */
+    #tabs { background: var(--surface); border-bottom: 1px solid var(--border); display: flex; gap: 0; overflow-x: auto; scrollbar-width: none; }
+    #tabs::-webkit-scrollbar { display: none; }
+    .tab { flex-shrink: 0; padding: 14px 20px; font-size: 14px; font-weight: 500; color: var(--muted); cursor: pointer; border-bottom: 2px solid transparent; transition: var(--trans); display: flex; align-items: center; gap: 7px; }
+    .tab:hover { color: var(--text); }
+    .tab.active { color: var(--text); border-bottom-color: var(--accent); }
+    .badge { background: var(--accent); color: #fff; border-radius: 999px; padding: 2px 8px; font-size: 11px; font-weight: 700; min-width: 20px; text-align: center; }
+    .badge.warn { background: var(--warn); color: #000; }
+    .badge.danger { background: var(--danger); }
+    .badge.muted { background: var(--border); color: var(--muted); }
+
+    /* ── Main content ── */
+    main { max-width: 780px; margin: 0 auto; padding: 20px 16px; }
+
+    /* ── Loading / empty states ── */
+    .loading { text-align: center; padding: 60px 20px; color: var(--muted); }
+    .spinner { width: 32px; height: 32px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; margin: 0 auto 16px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .empty { text-align: center; padding: 60px 20px; }
+    .empty-icon { font-size: 48px; margin-bottom: 12px; }
+    .empty-msg { color: var(--muted); font-size: 15px; }
+    .empty-sub  { color: var(--border); font-size: 13px; margin-top: 6px; }
+
+    /* ── Cards ── */
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--card-r); padding: 16px 18px; margin-bottom: 10px; cursor: pointer; transition: var(--trans); }
+    .card:hover { border-color: var(--accent); transform: translateY(-1px); }
+    .card-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+    .card-title { font-size: 15px; font-weight: 600; line-height: 1.4; flex: 1; }
+    .card-meta { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 7px; }
+    .chip { font-size: 11px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--border); color: var(--muted); }
+    .chip.cat-technical  { border-color: #4a9eff33; color: #4a9eff; }
+    .chip.cat-billing    { border-color: #ffb70033; color: var(--warn); }
+    .chip.cat-onboarding { border-color: #00d4aa33; color: var(--accent2); }
+    .chip.cat-general    { border-color: var(--border); }
+    .chip.type-candidate { border-color: #6c63ff33; color: var(--accent); }
+    .chip.type-ticket    { border-color: #2ecc7133; color: var(--green); }
+    .chip.type-error     { border-color: #ff4d6d33; color: var(--danger); }
+    .chip.type-contact   { border-color: #00d4aa33; color: var(--accent2); }
+
+    /* ── Detail panel ── */
+    #detail { display: none; }
+    #detail.open { display: block; }
+    .detail-back { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 14px; cursor: pointer; margin-bottom: 16px; padding: 6px 0; }
+    .detail-back:hover { color: var(--text); }
+    .detail-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--card-r); }
+    .detail-header { padding: 20px 20px 16px; border-bottom: 1px solid var(--border); }
+    .detail-title { font-size: 18px; font-weight: 700; margin-bottom: 8px; line-height: 1.4; }
+    .detail-meta { display: flex; gap: 8px; flex-wrap: wrap; }
+    .detail-body { padding: 20px; font-size: 14px; line-height: 1.7; color: #c5c8d8; max-height: 55vh; overflow-y: auto; }
+    .detail-body pre { background: var(--bg); border-radius: 6px; padding: 12px; overflow-x: auto; font-size: 12px; margin: 12px 0; white-space: pre-wrap; word-break: break-word; }
+    .detail-body h1, .detail-body h2, .detail-body h3, .detail-body h4 { color: var(--text); margin: 16px 0 8px; }
+    .detail-body p { margin-bottom: 10px; }
+    .detail-body hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
+    .detail-body strong { color: var(--text); }
+    .detail-actions { padding: 16px 20px; border-top: 1px solid var(--border); display: flex; gap: 10px; flex-wrap: wrap; }
+    .btn-approve { background: var(--accent2); color: #000; border: none; border-radius: 8px; padding: 10px 20px; font-size: 14px; font-weight: 700; cursor: pointer; transition: var(--trans); flex: 1; min-width: 120px; }
+    .btn-approve:hover { opacity: 0.85; }
+    .btn-reject  { background: transparent; color: var(--danger); border: 1px solid var(--danger); border-radius: 8px; padding: 10px 20px; font-size: 14px; font-weight: 600; cursor: pointer; transition: var(--trans); flex: 1; min-width: 100px; }
+    .btn-reject:hover { background: var(--danger); color: #fff; }
+    .btn-archive { background: transparent; color: var(--muted); border: 1px solid var(--border); border-radius: 8px; padding: 10px 16px; font-size: 14px; cursor: pointer; transition: var(--trans); }
+    .btn-archive:hover { color: var(--text); border-color: var(--text); }
+
+    /* ── Toast ── */
+    #toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(100px); background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 12px 20px; font-size: 14px; z-index: 200; transition: transform 0.3s ease; max-width: 90vw; text-align: center; }
+    #toast.show { transform: translateX(-50%) translateY(0); }
+    #toast.success { border-color: var(--accent2); color: var(--accent2); }
+    #toast.error   { border-color: var(--danger); color: var(--danger); }
+
+    /* ── Refresh button ── */
+    .refresh-row { display: flex; justify-content: flex-end; margin-bottom: 12px; }
+    .btn-refresh { background: none; border: 1px solid var(--border); color: var(--muted); border-radius: 8px; padding: 7px 14px; font-size: 13px; cursor: pointer; transition: var(--trans); }
+    .btn-refresh:hover { color: var(--text); border-color: var(--accent); }
+
+    /* ── Responsive ── */
+    @media (max-width: 600px) {
+      .tab { padding: 12px 14px; font-size: 13px; }
+      .detail-actions { flex-direction: column; }
+      .btn-approve, .btn-reject { flex: none; width: 100%; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- Setup Overlay -->
+<div id="setup-overlay">
+  <div class="setup-card">
+    <h2>STRING Brain Review</h2>
+    <p>Enter your GitHub personal access token to connect to the vault. It's stored only in your browser — never sent anywhere except GitHub.</p>
+    <div class="field-label">GitHub Token</div>
+    <input type="password" id="token-input" class="field-input" placeholder="ghp_..." autocomplete="off">
+    <div class="field-label" style="margin-top:14px;">Vault repo (owner/repo)</div>
+    <input type="text" id="repo-input" class="field-input" value="stephaniehofhenke/string-marketing-vault">
+    <button class="btn-primary" onclick="saveToken()">Connect →</button>
+    <div id="setup-error" class="setup-error"></div>
+  </div>
+</div>
+
+<!-- Main App -->
+<div id="app" style="display:none;">
+  <header>
+    <div class="logo"><span>STRING</span> Brain Review</div>
+    <div class="header-actions">
+      <button class="btn-icon" onclick="refreshAll()">↻ Refresh</button>
+      <button class="btn-icon" onclick="showSetup()">⚙ Token</button>
+    </div>
+  </header>
+
+  <div id="tabs">
+    <div class="tab active" data-tab="candidates" onclick="switchTab('candidates')">
+      📄 Candidates <span id="badge-candidates" class="badge muted">–</span>
+    </div>
+    <div class="tab" data-tab="tickets" onclick="switchTab('tickets')">
+      🎫 Unmatched <span id="badge-tickets" class="badge muted">–</span>
+    </div>
+    <div class="tab" data-tab="errors" onclick="switchTab('errors')">
+      ⚠️ Errors <span id="badge-errors" class="badge danger" style="display:none">–</span>
+    </div>
+    <div class="tab" data-tab="contacts" onclick="switchTab('contacts')">
+      👤 Contacts <span id="badge-contacts" class="badge muted">–</span>
+    </div>
+  </div>
+
+  <main>
+    <div id="list-view">
+      <div class="refresh-row">
+        <button class="btn-refresh" onclick="loadCurrentTab()">↻ Reload</button>
+      </div>
+      <div id="list-content"></div>
+    </div>
+    <div id="detail" class="detail-view">
+      <div class="detail-back" onclick="closeDetail()">← Back</div>
+      <div class="detail-card">
+        <div class="detail-header">
+          <div class="detail-title" id="detail-title"></div>
+          <div class="detail-meta" id="detail-meta"></div>
+        </div>
+        <div class="detail-body" id="detail-body"></div>
+        <div class="detail-actions" id="detail-actions"></div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<div id="toast"></div>
+
+<script>
+// ── Config ────────────────────────────────────────────────────────────────────
+const FOLDERS = {
+  candidates: 'Help Docs/candidates',
+  tickets:    'Inbox/tickets',
+  errors:     'Review/errors',
+  contacts:   'Review/new-contacts',
+};
+const APPROVE_DEST = {
+  candidates: 'Help Docs/drafts',
+};
+
+let TOKEN = '';
+let REPO  = '';
+let currentTab = 'candidates';
+let currentFile = null;
+let tabCache = {};
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+window.onload = () => {
+  TOKEN = localStorage.getItem('sb_token') || '';
+  REPO  = localStorage.getItem('sb_repo')  || 'stephaniehofhenke/string-marketing-vault';
+  if (TOKEN) {
+    document.getElementById('token-input').value = TOKEN;
+    document.getElementById('repo-input').value  = REPO;
+    launchApp();
+  }
+};
+
+async function saveToken() {
+  const t = document.getElementById('token-input').value.trim();
+  const r = document.getElementById('repo-input').value.trim();
+  if (!t || !r) { showSetupError('Both fields required.'); return; }
+  // Quick validation
+  const res = await ghFetch(`/repos/${r}`);
+  if (!res.ok) { showSetupError('Could not connect. Check token and repo name.'); return; }
+  TOKEN = t; REPO = r;
+  localStorage.setItem('sb_token', TOKEN);
+  localStorage.setItem('sb_repo',  REPO);
+  launchApp();
+}
+
+function showSetup() {
+  document.getElementById('setup-overlay').style.display = 'flex';
+  document.getElementById('app').style.display = 'none';
+}
+
+function launchApp() {
+  document.getElementById('setup-overlay').style.display = 'none';
+  document.getElementById('app').style.display = 'block';
+  refreshAll();
+}
+
+function showSetupError(msg) {
+  const el = document.getElementById('setup-error');
+  el.textContent = msg;
+  el.style.display = 'block';
+}
+
+// ── GitHub API ────────────────────────────────────────────────────────────────
+async function ghFetch(path, opts = {}) {
+  const url = path.startsWith('http') ? path : `https://api.github.com${path}`;
+  return fetch(url, {
+    ...opts,
+    headers: {
+      'Authorization': `token ${TOKEN}`,
+      'Accept':        'application/vnd.github+json',
+      'X-GitHub-Api-Version': '2022-11-28',
+      ...(opts.headers || {}),
+    }
+  });
+}
+
+async function listFolder(folder) {
+  const res = await ghFetch(`/repos/${REPO}/contents/${encodeURIComponent(folder)}`);
+  if (!res.ok) return [];
+  const data = await res.json();
+  return Array.isArray(data) ? data.filter(f => f.name.endsWith('.md')) : [];
+}
+
+async function readFile(path) {
+  const res = await ghFetch(`/repos/${REPO}/contents/${encodeURIComponent(path)}`);
+  if (!res.ok) return null;
+  return res.json();
+}
+
+async function deleteFile(path, sha, message) {
+  const res = await ghFetch(`/repos/${REPO}/contents/${encodeURIComponent(path)}`, {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message, sha })
+  });
+  return res.ok;
+}
+
+async function moveFile(srcPath, destFolder, filename, sha, content, message) {
+  // 1. Write to new location
+  const dest = `${destFolder}/${filename}`;
+  const putRes = await ghFetch(`/repos/${REPO}/contents/${encodeURIComponent(dest)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message, content })
+  });
+  if (!putRes.ok) return false;
+  // 2. Delete from old location
+  return deleteFile(srcPath, sha, `Remove from queue: ${filename}`);
+}
+
+// ── Tabs ──────────────────────────────────────────────────────────────────────
+function switchTab(tab) {
+  currentTab = tab;
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
+  closeDetail();
+  loadCurrentTab();
+}
+
+async function refreshAll() {
+  for (const tab of Object.keys(FOLDERS)) {
+    loadTabBadge(tab);
+  }
+  loadCurrentTab();
+}
+
+async function loadTabBadge(tab) {
+  const files = await listFolder(FOLDERS[tab]);
+  const count = files.length;
+  const badge = document.getElementById(`badge-${tab}`);
+  if (!badge) return;
+  badge.textContent = count;
+  badge.style.display = count === 0 ? 'none' : '';
+  badge.className = 'badge' + (tab === 'errors' && count > 0 ? ' danger' : tab === 'tickets' ? ' warn' : count === 0 ? ' muted' : '');
+}
+
+async function loadCurrentTab() {
+  const content = document.getElementById('list-content');
+  content.innerHTML = '<div class="loading"><div class="spinner"></div>Loading…</div>';
+  const files = await listFolder(FOLDERS[currentTab]);
+  tabCache[currentTab] = files;
+  renderList(files);
+}
+
+function renderList(files) {
+  const content = document.getElementById('list-content');
+  if (files.length === 0) {
+    const icons = { candidates: '✅', tickets: '📭', errors: '🟢', contacts: '👍' };
+    const msgs  = { candidates: 'No candidates pending', tickets: 'No unmatched tickets', errors: 'No errors logged', contacts: 'No new contacts' };
+    content.innerHTML = `<div class="empty"><div class="empty-icon">${icons[currentTab]}</div><div class="empty-msg">${msgs[currentTab]}</div><div class="empty-sub">All clear</div></div>`;
+    return;
+  }
+
+  content.innerHTML = files.map(f => {
+    // Parse date and title from filename pattern YYYY-MM-DD-...-slug.md
+    const parts = f.name.replace('.md','').split('-');
+    const date  = parts.slice(0,3).join('-');
+    const title = parts.slice(3).join(' ').replace(/-/g,' ') || f.name;
+    const typeChip = currentTab === 'candidates' ? 'type-candidate' : currentTab === 'tickets' ? 'type-ticket' : currentTab === 'errors' ? 'type-error' : 'type-contact';
+    return `
+<div class="card" onclick="openDetail('${f.path}', '${escHtml(f.name)}')">
+  <div class="card-header">
+    <div class="card-title">${escHtml(humanTitle(f.name))}</div>
+  </div>
+  <div class="card-meta">
+    <span class="chip ${typeChip}">${currentTab.slice(0,-1)}</span>
+    <span class="chip">${date || '—'}</span>
+  </div>
+</div>`;
+  }).join('');
+}
+
+// ── Detail ────────────────────────────────────────────────────────────────────
+async function openDetail(path, filename) {
+  document.getElementById('list-view').style.display = 'none';
+  const detail = document.getElementById('detail');
+  detail.classList.add('open');
+
+  document.getElementById('detail-title').textContent = humanTitle(filename);
+  document.getElementById('detail-meta').innerHTML = `<span class="chip">Loading…</span>`;
+  document.getElementById('detail-body').innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+  document.getElementById('detail-actions').innerHTML = '';
+
+  const file = await readFile(path);
+  if (!file) {
+    document.getElementById('detail-body').textContent = 'Could not load file.';
+    return;
+  }
+  currentFile = { path, filename, sha: file.sha, content: file.content };
+
+  // Decode + render
+  const raw = atob(file.content.replace(/\n/g, ''));
+  document.getElementById('detail-meta').innerHTML = `<span class="chip">${currentTab}</span><span class="chip">${path.split('/').slice(-2)[0]}</span>`;
+  document.getElementById('detail-body').innerHTML = renderMarkdown(raw);
+
+  // Action buttons
+  buildActions(path, filename, file.sha, file.content);
+}
+
+function closeDetail() {
+  document.getElementById('detail').classList.remove('open');
+  document.getElementById('list-view').style.display = 'block';
+  currentFile = null;
+}
+
+function buildActions(path, filename, sha, content) {
+  const el = document.getElementById('detail-actions');
+  if (currentTab === 'candidates') {
+    el.innerHTML = `
+      <button class="btn-approve" onclick="approveCandidate('${escHtml(path)}','${escHtml(filename)}','${sha}')">✓ Approve → Drafts</button>
+      <button class="btn-reject"  onclick="rejectFile('${escHtml(path)}','${sha}','${escHtml(filename)}')">✕ Reject</button>
+    `;
+  } else if (currentTab === 'errors') {
+    el.innerHTML = `
+      <button class="btn-approve" onclick="rejectFile('${escHtml(path)}','${sha}','${escHtml(filename)}')">✓ Mark Resolved</button>
+      <button class="btn-archive" onclick="closeDetail()">← Back</button>
+    `;
+  } else if (currentTab === 'tickets') {
+    el.innerHTML = `
+      <button class="btn-archive" onclick="rejectFile('${escHtml(path)}','${sha}','${escHtml(filename)}')">Archive</button>
+      <button class="btn-archive" onclick="closeDetail()">← Back</button>
+    `;
+  } else {
+    el.innerHTML = `
+      <button class="btn-reject"  onclick="rejectFile('${escHtml(path)}','${sha}','${escHtml(filename)}')">✕ Dismiss</button>
+      <button class="btn-archive" onclick="closeDetail()">← Back</button>
+    `;
+  }
+}
+
+async function approveCandidate(path, filename, sha) {
+  showToast('Moving to drafts…');
+  const file = await readFile(path);
+  if (!file) { showToast('Error reading file', 'error'); return; }
+  const ok = await moveFile(path, APPROVE_DEST.candidates, filename, sha, file.content, `Approved: ${filename}`);
+  if (ok) {
+    showToast('Moved to Help Docs/drafts ✓', 'success');
+    closeDetail();
+    loadCurrentTab();
+    loadTabBadge(currentTab);
+  } else {
+    showToast('Failed to move file', 'error');
+  }
+}
+
+async function rejectFile(path, sha, filename) {
+  if (!confirm(`Delete "${humanTitle(filename)}"?`)) return;
+  const ok = await deleteFile(path, sha, `Rejected: ${filename}`);
+  if (ok) {
+    showToast('Removed ✓', 'success');
+    closeDetail();
+    loadCurrentTab();
+    loadTabBadge(currentTab);
+  } else {
+    showToast('Delete failed', 'error');
+  }
+}
+
+// ── Markdown renderer (lightweight) ──────────────────────────────────────────
+function renderMarkdown(md) {
+  return md
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    // Code blocks
+    .replace(/```[\s\S]*?```/g, m => `<pre>${m.slice(3,-3).trim()}</pre>`)
+    // Inline code
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    // Headers
+    .replace(/^#### (.+)$/gm,'<h4>$1</h4>')
+    .replace(/^### (.+)$/gm,'<h3>$1</h3>')
+    .replace(/^## (.+)$/gm,'<h2>$1</h2>')
+    .replace(/^# (.+)$/gm,'<h1>$1</h1>')
+    // Bold
+    .replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>')
+    // HR
+    .replace(/^---+$/gm,'<hr>')
+    // Frontmatter block (dim it)
+    .replace(/^(---\n[\s\S]*?\n---)/m, '<pre style="opacity:0.45;font-size:11px">$1</pre>')
+    // Line breaks
+    .replace(/\n/g,'<br>');
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function humanTitle(filename) {
+  return filename.replace('.md','').replace(/^\d{4}-\d{2}-\d{2}-\d+-?/, '').replace(/-/g,' ').replace(/\b\w/g, c => c.toUpperCase()) || filename;
+}
+function escHtml(s) { return (s||'').replace(/'/g,"\\'").replace(/"/g,'&quot;'); }
+
+let toastTimer;
+function showToast(msg, type = '') {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = `show ${type}`;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.className = '', 3000);
+}
+</script>
+</body>
+</html>
