@@ -238,6 +238,15 @@
       <div class="list-body" id="list-candidates"></div>
     </div>
 
+    <!-- Policy Review -->
+    <div id="tab-policy" class="tab-content" style="display:none">
+      <div class="list-header">
+        <div class="list-title">Policy</div>
+        <div class="list-sub">Conflicting or nuanced decisions — approve before publishing</div>
+      </div>
+      <div class="list-body" id="list-policy"></div>
+    </div>
+
     <!-- Tickets -->
     <div id="tab-tickets" class="tab-content" style="display:none">
       <div class="list-header">
@@ -299,6 +308,11 @@
       <!-- document icon -->
       <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
       <div class="tab-label">Review<span id="b-candidates" class="tab-count hide">0</span></div>
+    </div>
+    <div class="tab" data-tab="policy" onclick="switchTab('policy')">
+      <!-- shield/policy icon -->
+      <svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+      <div class="tab-label">Policy<span id="b-policy" class="tab-count hide">0</span></div>
     </div>
     <div class="tab" data-tab="tickets" onclick="switchTab('tickets')">
       <!-- tag icon -->
@@ -366,12 +380,13 @@
 // ── Config ────────────────────────────────────────────────────────────────────
 const FOLDERS = {
   candidates: 'Help Docs/candidates',
+  policy:     'Review/policy-review',
   tickets:    'Inbox/tickets',
   errors:     'Review/errors',
   contacts:   'Review/new-contacts',
 };
-const APPROVE_DEST = { candidates: 'Help Docs/drafts' };
-const STRIP_CLASS  = { candidates:'strip-gold', tickets:'strip-blue', errors:'strip-red', contacts:'strip-teal' };
+const APPROVE_DEST = { candidates: 'Help Docs/drafts', policy: 'Help Docs/drafts' };
+const STRIP_CLASS  = { candidates:'strip-gold', policy:'strip-red', tickets:'strip-blue', errors:'strip-red', contacts:'strip-teal' };
 
 let TOKEN = '', REPO = '', CLAUDE_KEY = '';
 let currentTab = 'candidates';
@@ -486,7 +501,7 @@ function switchTab(tab) {
 }
 
 async function refreshAll() {
-  for (const t of ['candidates', 'tickets', 'errors', 'contacts']) loadTabBadge(t);
+  for (const t of ['candidates', 'policy', 'tickets', 'errors', 'contacts']) loadTabBadge(t);
   if (currentTab !== 'chat') loadTab(currentTab);
 }
 
@@ -508,7 +523,7 @@ async function loadTab(tab) {
 
 function renderList(tab, files, el) {
   if (!files.length) {
-    const msgs = { candidates: 'No candidates pending', tickets: 'No unmatched tickets', errors: 'No errors logged', contacts: 'No new contacts' };
+    const msgs = { candidates: 'No candidates pending', policy: 'No policy items pending', tickets: 'No unmatched tickets', errors: 'No errors logged', contacts: 'No new contacts' };
     el.innerHTML = `<div class="empty"><div class="empty-line"></div><div class="empty-title">${msgs[tab]}</div><div class="empty-sub">All clear</div></div>`;
     return;
   }
@@ -552,9 +567,10 @@ function closeSheet() { document.getElementById('detail-sheet').classList.remove
 
 function buildSheetActions() {
   const el = document.getElementById('sheet-actions');
-  if (currentTab === 'candidates') {
+  if (currentTab === 'candidates' || currentTab === 'policy') {
+    const label = currentTab === 'policy' ? 'Approve & Publish' : 'Approve';
     el.innerHTML = `
-      <button class="btn-action btn-approve" onclick="approveCandidate()">Approve</button>
+      <button class="btn-action btn-approve" onclick="approveCandidate()">${label}</button>
       <button class="btn-action btn-reject"  onclick="rejectCurrent()">Reject</button>`;
   } else if (currentTab === 'errors') {
     el.innerHTML = `
