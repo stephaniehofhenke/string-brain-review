@@ -2841,32 +2841,82 @@ async function sendChat(){
   CHAT_HISTORY.push({role:'user',content:text});
   renderChat();
 
-  const systemPrompt = `You are an assistant embedded in STRING Marketing's "STRING Brain" — a Claude-powered second brain built on top of an Obsidian vault. The vault contains records for Clients, Contacts, Leads, Team, Projects, Systems, and Services, plus meeting notes and tickets. The user (Stephanie) browses the vault through this dashboard. Be concise. Use markdown. When referencing entities, use the canonical name. If asked about a specific record, the user's current selection is provided in the context below.${contextNote}`;
+  const systemPrompt = `You are an assistant embedded in STRING Marketing's "STRING Brain" — a Claude-powered second brain on a GitHub-backed Obsidian vault (repo "${REPO}"). Files are markdown with YAML frontmatter. The vault holds Clients, Contacts, Leads, Team, Projects, Systems, Services, plus meeting notes and tickets.
 
+You have TOOLS to actually edit the vault and Notion. Use them when the user asks for changes — don't refuse and don't ask for permission, just do it (changes go through git so they're reversible):
+  - read_file(path) — read any vault file (returns content + sha)
+  - write_file(path, content, sha, message) — create/overwrite a file (commits)
+  - delete_file(path, sha, message) — delete a file (commits)
+  - list_directory(path) — list a vault folder
+  - search_code(query) — GitHub code search for finding backlinks etc.
+  - archive_notion_page(page_id) — archive a Notion page. Note: this hits CORS from the browser today; if it fails, fall back to queueing an action-request by writing to Review/action-requests.json.
+  - finish(summary) — call when the task is done
+
+Workflow: read context first, plan in 1-2 sentences, then execute. Be concise. Use markdown. Use canonical entity names.${contextNote}`;
+
+  // Build API-side message history (parallel to display CHAT_HISTORY).
+  // Display history holds plain strings; API history holds the raw blocks Anthropic needs.
+  if(!window._API_MSGS) window._API_MSGS = [];
+  window._API_MSGS.push({role:'user', content: text});
+
+  let turn = 0;
+  const MAX_TURNS = 12;
   try{
-    const r = await fetch(CLAUDE_API,{
-      method:'POST',
-      headers:{
-        'x-api-key':ANTHROPIC_KEY,
-        'anthropic-version':'2023-06-01',
-        'content-type':'application/json',
-        'anthropic-dangerous-direct-browser-access':'true'
-      },
-      body:JSON.stringify({
-        model:CLAUDE_MODEL,
-        max_tokens:1500,
-        system:systemPrompt,
-        messages:CHAT_HISTORY
-      })
-    });
-    if(!r.ok){
-      const err = await r.text();
-      CHAT_HISTORY.push({role:'assistant',content:`Error: ${err.slice(0,200)}`});
-    }else{
+    while(turn++ < MAX_TURNS){
+      const r = await fetch(CLAUDE_API,{
+        method:'POST',
+        headers:{
+          'x-api-key':ANTHROPIC_KEY,
+          'anthropic-version':'2023-06-01',
+          'content-type':'application/json',
+          'anthropic-dangerous-direct-browser-access':'true'
+        },
+        body:JSON.stringify({
+          model:CLAUDE_MODEL,
+          max_tokens:4000,
+          system:systemPrompt,
+          tools: TOOLS,
+          messages: window._API_MSGS
+        })
+      });
+      if(!r.ok){
+        const err = await r.text();
+        CHAT_HISTORY.push({role:'assistant',content:`Error: ${err.slice(0,400)}`});
+        renderChat();
+        return;
+      }
       const data = await r.json();
-      const reply = data.content?.[0]?.text || '(no response)';
-      CHAT_HISTORY.push({role:'assistant',content:reply});
+      const blocks = data.content || [];
+      window._API_MSGS.push({role:'assistant', content: blocks});
+
+      // Render: text → bubble, tool_use → inline indicator
+      for(const b of blocks){
+        if(b.type==='text' && b.text.trim()){
+          CHAT_HISTORY.push({role:'assistant', content: b.text});
+        } else if(b.type==='tool_use'){
+          CHAT_HISTORY.push({role:'assistant', content: `🔧 \`${b.name}(${shortenArgs(b.input)})\``, _tool:true});
+        }
+      }
+      renderChat();
+
+      const toolUses = blocks.filter(b=>b.type==='tool_use');
+      if(!toolUses.length) return; // final text answer
+
+      // Execute each tool, collect tool_result blocks
+      const toolResults = [];
+      for(const tu of toolUses){
+        let result;
+        try{ result = await runTool(tu.name, tu.input); }
+        catch(e){ result = {ok:false, error:e.message}; }
+        const short = result.ok ? `✓ ${tu.name} → ok` : `✗ ${tu.name} failed: ${result.error||'unknown'}`;
+        CHAT_HISTORY.push({role:'assistant', content: short, _tool:true});
+        toolResults.push({type:'tool_result', tool_use_id: tu.id, content: JSON.stringify(result).slice(0,8000), is_error: !result.ok});
+        if(tu.name === 'finish'){ renderChat(); return; }
+      }
+      renderChat();
+      window._API_MSGS.push({role:'user', content: toolResults});
     }
+    CHAT_HISTORY.push({role:'assistant', content: `(hit ${MAX_TURNS}-turn limit)`});
   }catch(e){
     CHAT_HISTORY.push({role:'assistant',content:`Error: ${e.message}`});
   }
@@ -2884,6 +2934,10 @@ function renderChat(){
   }
   const msgs = CHAT_HISTORY.map(m=>{
     const role = m.role==='user'?'You':'Claude';
+    if(m._tool){
+      // Inline tool indicator — smaller, monospace
+      return `<div class="chat-msg assistant" style="opacity:0.75"><div class="bubble" style="background:var(--surface2);font-family:Menlo,Monaco,monospace;font-size:11px;padding:4px 10px">${DOMPurify.sanitize(marked.parse(m.content))}</div></div>`;
+    }
     return `<div class="chat-msg ${m.role}"><div class="role">${role}</div><div class="bubble">${DOMPurify.sanitize(marked.parse(m.content))}</div></div>`;
   }).join('') || `<div class="empty-state"><div class="icon">💬</div><div>Ask anything${CHAT_CONTEXT_REF?' about this item':''}.</div></div>`;
   cm.innerHTML = banner + msgs;
