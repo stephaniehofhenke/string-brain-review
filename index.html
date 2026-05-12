@@ -1810,15 +1810,15 @@ function getChoicesForItem(it){
     const dropUrl = (raw.items||[]).find(s=>(s.context||'').startsWith('http') && /Duplicate to delete/i.test(s.name||''))?.context;
     const keptUrl = (raw.items||[]).find(s=>(s.context||'').startsWith('http') && /Kept/i.test(s.name||''))?.context;
     return [
-      {id:'archive-auto', label:'🤖 Archive duplicate in Notion (auto)', hint: NOTION_KEY ? 'I archive it directly via Notion API' : 'requires Notion key in Settings', style:'primary',
+      {id:'archive-auto', label:'🤖 Archive ALL Notion duplicates (server-side)', hint:'runs _scripts/archive_notion_duplicates.py — one click clears all', style:'primary',
         run: async ()=>{
-          if(!NOTION_KEY) return {ok:false, message:'Notion API key not set — add it in Settings to enable auto-archive.'};
-          const id = notionIdFromUrl(dropUrl);
-          if(!id) return {ok:false, message:'Could not extract page ID from URL.'};
-          await notionArchivePage(id);
-          return {ok:true, message:'Archived duplicate in Notion (reversible — it\'s in Notion trash).'};
+          // Notion's API blocks browser calls (CORS). Use the server-side script
+          // by queueing it as an action-request; nightly sync executes on next run.
+          // For immediate execution: tell user to run locally.
+          const r = await queueActionRequest({action:'archive-all-notion-duplicates', script:'_scripts/archive_notion_duplicates.py'});
+          return {ok:true, message:'Queued. Run `python3 _scripts/archive_notion_duplicates.py` from the vault, or wait for the next nightly sync. (Notion blocks direct browser archive calls.)'};
         },
-        autoResolve:true, resolveNote:'Archived duplicate via API'},
+        autoResolve:false},
       {id:'open-dup', label:'Open duplicate in Notion to delete manually', hint:'opens in new tab',
         run: async ()=>{ if(dropUrl){window.open(dropUrl,'_blank')}; return {ok:true, message:'Opened duplicate. Delete in Notion, then come back to mark done.'} },
         autoResolve:false},
