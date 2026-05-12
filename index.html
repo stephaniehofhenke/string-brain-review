@@ -273,10 +273,16 @@ a.broken-link{color:var(--red);text-decoration:line-through}
 .subitem-bulk input{padding:5px 8px;border:1px solid var(--border);border-radius:5px;background:#fff;font-size:12px;min-width:160px}
 .subitem-bulk button{font-size:12px;padding:5px 10px;border-radius:5px;font-weight:600;background:var(--teal);color:#fff}
 .autocomplete-list{position:relative}
-.autocomplete-dropdown{position:absolute;top:100%;left:0;right:0;background:var(--surface);border:1px solid var(--border);border-radius:5px;max-height:180px;overflow-y:auto;z-index:50;box-shadow:var(--shadow-md);display:none}
+.autocomplete-list input{padding-right:24px !important}
+.autocomplete-list::after{content:"▾";position:absolute;right:8px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:10px;pointer-events:none}
+.autocomplete-dropdown{position:absolute;top:calc(100% + 2px);left:0;right:0;background:var(--surface);border:1px solid var(--border);border-radius:5px;max-height:220px;overflow-y:auto;z-index:200;box-shadow:var(--shadow-md);display:none}
 .autocomplete-dropdown.open{display:block}
-.autocomplete-dropdown .ac-item{padding:6px 10px;cursor:pointer;font-size:12px;border-bottom:1px solid var(--border)}
+.autocomplete-dropdown .ac-item{padding:7px 10px;cursor:pointer;font-size:12px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:6px}
+.autocomplete-dropdown .ac-item:last-child{border-bottom:none}
 .autocomplete-dropdown .ac-item:hover,.autocomplete-dropdown .ac-item.active{background:var(--surface2)}
+.autocomplete-dropdown .ac-item.create{color:var(--teal);font-weight:600;background:#f6f9fb}
+.autocomplete-dropdown .ac-item.create:hover{background:#e8f4f8}
+.autocomplete-dropdown .ac-empty{padding:10px;font-size:11px;color:var(--muted);text-align:center}
 
 /* OLD grid styles kept for back-compat */
 .review-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;padding:20px 24px 40px}
@@ -1547,8 +1553,8 @@ async function renderSubItemsBlock(it, idx){
   const subs = raw.items || [];
   const parentId = it.queue_id || 'unknown';
   const stateMap = SUBITEM_STATE[parentId] = SUBITEM_STATE[parentId] || {};
-  const clients = await loadClientNames();
-  const clientsJson = JSON.stringify(clients);
+  // Load client names BEFORE rendering so autocomplete has data ready
+  await loadClientNames();
 
   const pendingCount = subs.filter((si,i)=>!stateMap[subItemKey(si,i)] || stateMap[subItemKey(si,i)]==='pending').length;
   const doneCount = subs.length - pendingCount;
@@ -1556,7 +1562,9 @@ async function renderSubItemsBlock(it, idx){
   const bulk = `
     <div class="subitem-bulk">
       <span><strong>${pendingCount}</strong> of ${subs.length} pending · <strong>${doneCount}</strong> done</span>
-      <input id="bulk-client" placeholder="Apply to all pending: type a client name…" oninput="setupAutocomplete(this, ${clientsJson.replace(/"/g,'&quot;')})">
+      <span class="autocomplete-list" style="position:relative;flex:1;min-width:180px">
+        <input id="bulk-client" placeholder="Apply to all pending: pick a client…">
+      </span>
       <button onclick="bulkLinkContacts(${idx})">Link all pending to this client</button>
     </div>
   `;
@@ -1580,7 +1588,7 @@ async function renderSubItemsBlock(it, idx){
         </div>
         ${done?'<span class="si-status">✓ done</span>':skipped?'<span class="si-status" style="color:var(--muted)">↩ skipped</span>':`
           <div class="si-picker autocomplete-list">
-            <input id="pick-${idx}-${i}" placeholder="Pick a client…" oninput='setupAutocomplete(this, ${clientsJson.replace(/"/g,"&quot;")})'>
+            <input id="pick-${idx}-${i}" placeholder="Pick a client…">
           </div>
           <div class="si-actions">
             <button class="primary" onclick="subitemLink(${idx},${i})">Link</button>
@@ -1592,30 +1600,146 @@ async function renderSubItemsBlock(it, idx){
       </div>
     `;
   }).join('');
+  // Attach autocomplete to all pickers after DOM insert (deferred via setTimeout)
+  setTimeout(()=>{
+    document.querySelectorAll('.subitem-row input, #bulk-client').forEach(inp=>setupAutocomplete(inp));
+  }, 0);
   return bulk + rows;
 }
 
-// Lightweight autocomplete that filters a list as user types
+// Autocomplete: open on focus, filter as user types, include "Create new" option.
+// Closes on outside click. Lookup data is pulled from CLIENT_NAMES_CACHE so we
+// don't depend on inline-serialized lists (which can break on quoting edge cases).
 function setupAutocomplete(input, list){
-  let arr;
-  try{ arr = typeof list === 'string' ? JSON.parse(list) : list }catch(e){ arr = []; }
+  // Lazy attach event handlers once per input
+  if(input._acAttached) return;
+  input._acAttached = true;
+  // Ensure the input is wrapped in .autocomplete-list (so the absolute-positioned
+  // dropdown anchors correctly even if the markup didn't include the wrapper)
+  if(!input.parentElement.classList.contains('autocomplete-list')){
+    const wrap = document.createElement('span');
+    wrap.className = 'autocomplete-list';
+    wrap.style.display = 'inline-block';
+    wrap.style.position = 'relative';
+    wrap.style.flex = '1';
+    input.parentNode.insertBefore(wrap, input);
+    wrap.appendChild(input);
+  }
   let dd = input.parentElement.querySelector('.autocomplete-dropdown');
   if(!dd){
     dd = document.createElement('div');
     dd.className = 'autocomplete-dropdown';
     input.parentElement.appendChild(dd);
   }
+  input.addEventListener('input', ()=>renderAutocompleteOptions(input, dd));
+  input.addEventListener('focus', ()=>renderAutocompleteOptions(input, dd));
+  input.addEventListener('blur', ()=>{
+    // Delay so click on item registers first
+    setTimeout(()=>dd.classList.remove('open'), 180);
+  });
+  // Initial render
+  renderAutocompleteOptions(input, dd);
+}
+
+function renderAutocompleteOptions(input, dd){
+  const arr = CLIENT_NAMES_CACHE || [];
   const q = input.value.toLowerCase().trim();
-  if(!q){ dd.classList.remove('open'); return; }
-  const matches = arr.filter(n=>n.toLowerCase().includes(q)).slice(0,10);
-  if(!matches.length){ dd.classList.remove('open'); return; }
-  dd.innerHTML = matches.map(m=>`<div class="ac-item" onclick="selectAutocomplete(this, '${m.replace(/'/g,"\\'")}')">${escapeHtml(m)}</div>`).join('');
+  const matches = q ? arr.filter(n=>n.toLowerCase().includes(q)).slice(0,20) : arr.slice(0,20);
+  let html = '';
+  if(matches.length){
+    html += matches.map(m=>{
+      const safe = String(m).replace(/[ -"'\\<>]/g, '');
+      return `<div class="ac-item" data-value="${escapeAttr(safe)}" onmousedown="selectAutocomplete(this)">${escapeHtml(m)}</div>`;
+    }).join('');
+  } else {
+    html += `<div class="ac-empty">No clients match "${escapeHtml(q)}"</div>`;
+  }
+  // "Create new" option — always appears at the bottom when user has typed something
+  if(q){
+    html += `<div class="ac-item create" data-value="__create__:${escapeAttr(q)}" onmousedown="selectAutocomplete(this)">＋ Create new client: <span style="font-weight:700">${escapeHtml(input.value.trim())}</span></div>`;
+  }
+  dd.innerHTML = html;
   dd.classList.add('open');
 }
-function selectAutocomplete(el, value){
-  const input = el.closest('.autocomplete-list').querySelector('input');
-  input.value = value;
+
+async function selectAutocomplete(el){
+  const value = el.dataset.value || el.textContent.trim();
+  const wrap = el.closest('.autocomplete-list');
+  const input = wrap.querySelector('input');
+  if(value.startsWith('__create__:')){
+    const newName = value.slice('__create__:'.length).trim();
+    if(!newName) return;
+    if(!confirm(`Create a new client folder "${newName}"?\n\nThis will create Clients/${newName}/${newName}.md with a stub frontmatter.`)) return;
+    try{
+      await createClientStub(newName);
+      CLIENT_NAMES_CACHE.push(newName);
+      CLIENT_NAMES_CACHE.sort();
+      input.value = newName;
+    }catch(e){
+      alert('Failed to create client: '+e.message);
+      return;
+    }
+  } else {
+    input.value = value;
+  }
   el.parentElement.classList.remove('open');
+  input.focus();
+}
+
+async function createClientStub(name){
+  const today = new Date().toISOString().slice(0,10);
+  const safe = name.replace(/["\\]/g,'').trim();
+  const content = `---
+name: "${safe}"
+status: active
+subscriptions: []
+contacts: []
+referred_by: ""
+projects: []
+notion_id: ""
+notion_url: ""
+main_contact_email: ""
+website: ""
+domain: ""
+teamwork_url: ""
+teamwork_id: ""
+desk_url: ""
+desk_id: ""
+gdrive_folder_url: ""
+stripe_customer_id: ""
+ghl_subaccount_id: ""
+figma_link: ""
+timezone: ""
+sensitivity: team
+last_context_update: ${today}
+---
+
+# ${safe}
+
+## Account Summary
+_(2-4 sentences: who they are, what we do for them, current relationship status)_
+
+## Current Work
+_(populate)_
+
+## Team & Contacts
+| Name | Role | Email |
+|------|------|-------|
+
+## Systems & Tech Stack
+
+### Current Systems
+| System | Purpose | Our Setup | Status |
+|--------|---------|-----------|--------|
+
+## Notes
+_(add context here)_
+
+---
+*Created ${today} from the dashboard.*
+`;
+  await ghPutFile(`Clients/${safe}/${safe}.md`, content, null, `Create client stub: ${safe}`);
+  await appendAuditLog(`**Created new client:** ${safe}`);
 }
 
 // ── Per-sub-item action handlers ──
