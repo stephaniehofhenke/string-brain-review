@@ -433,6 +433,17 @@ async function ghFile(path){
   return {content:decoded, sha:data.sha, path:data.path};
 }
 
+async function ghPutFile(path, content, sha, message){
+  const encoded = btoa(unescape(encodeURIComponent(content)));
+  const r = await fetch(`${GH_API}/${encodeURI(path)}`,{
+    method:'PUT',
+    headers:{Authorization:`Bearer ${GH_TOKEN}`,Accept:'application/vnd.github.v3+json','Content-Type':'application/json'},
+    body: JSON.stringify({message: message || `Update ${path}`, content: encoded, sha})
+  });
+  if(!r.ok) throw new Error(`GH PUT ${r.status}: ${(await r.text()).slice(0,200)}`);
+  return r.json();
+}
+
 // ───────────── Markdown / frontmatter ─────────────
 function parseFrontmatter(text){
   const m = text.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
@@ -968,6 +979,8 @@ function renderPeopleQueueCard(it,resolved){
 
 // ───────────── Unified Review (all sources) ─────────────
 let CHAT_CONTEXT_REF = null;  // {kind, title, body, path} — set when opening chat from a tile or detail
+let PEOPLE_QUEUE_CACHE = null; // {content, sha, parsed} — kept for write-back
+let REVIEW_SHOW_RESOLVED = false;
 
 async function loadReviewAll(){
   const list = document.getElementById('list-items');
@@ -978,16 +991,22 @@ async function loadReviewAll(){
   const items = [];
   const errors = [];
 
-  // 1. People queue (pending only)
+  // 1. People queue (load full, filter by status based on toggle)
   try{
     const f = await ghFile('Review/people-queue.json');
     const q = JSON.parse(f.content);
-    q.items.filter(i=>i.status==='pending').forEach(it=>{
+    PEOPLE_QUEUE_CACHE = {content:f.content, sha:f.sha, parsed:q};
+    const filter = REVIEW_SHOW_RESOLVED ? (i=>true) : (i=>i.status==='pending');
+    q.items.filter(filter).forEach(it=>{
       items.push({
         source:'people', source_label:'People',
+        status: it.status,
         title: it.title || '(untitled)',
         desc: (it.description||'') + (it.items?.length ? ` — ${it.items.length} sub-item${it.items.length>1?'s':''}`:''),
         action_target:{view:'review-people'},
+        queue_id: it.id,
+        queue_type: it.type,
+        queue_source: it.source,
         ref:{kind:'people-queue-item', id:it.id, body:JSON.stringify(it,null,2), title:it.title}
       });
     });
@@ -1101,7 +1120,10 @@ async function loadReviewAll(){
       <div class="filter-bar" id="review-source-chips">
         ${sources.map(s=>`<button class="chip ${s==='all'?'active':''}" data-source="${s}" onclick="filterReviewSource('${s}')">${escapeHtml(s)}<span class="ct">${s==='all'?items.length:(counts[s]||0)}</span></button>`).join('')}
       </div>
-      <div style="margin-top:10px;font-size:11px;color:var(--muted)">Tip: click 💬 on any tile or row to chat about it with full context.</div>
+      <label style="display:flex;align-items:center;gap:6px;margin-top:10px;font-size:11px;color:var(--muted);cursor:pointer">
+        <input type="checkbox" id="show-resolved-toggle" ${REVIEW_SHOW_RESOLVED?'checked':''} onchange="toggleShowResolved()"> Show resolved
+      </label>
+      <div style="margin-top:8px;font-size:11px;color:var(--muted)">Tip: click ✓ to mark done, 💬 to chat. Resolving one item with a note will scan for similar items to bulk-resolve.</div>
     </div>
   `;
   document.getElementById('list-count').textContent = items.length;
@@ -1134,19 +1156,101 @@ function renderReviewGrid(src, summaryHtml){
 }
 
 function tileHtml(it,idx){
+  const resolved = it.status === 'resolved';
+  const canMarkDone = it.source === 'people'; // only people-queue items are writable for now
   return `
-    <div class="review-tile">
+    <div class="review-tile" style="${resolved?'opacity:0.5':''}">
       <div class="tile-source">
-        <span class="source-pill ${escapeAttr(it.source)}">${escapeHtml(it.source_label)}</span>
+        <span class="source-pill ${escapeAttr(it.source)}">${escapeHtml(it.source_label)}${resolved?' · ✓':''}</span>
       </div>
       <div class="tile-title">${escapeHtml(it.title)}</div>
       <div class="tile-desc">${escapeHtml(it.desc||'')}</div>
       <div class="tile-actions">
         <button onclick='reviewTileOpen(${idx})'>Open</button>
         <button class="chat-btn" onclick='reviewTileChat(${idx})'>💬 Chat</button>
+        ${canMarkDone && !resolved ? `<button onclick='markReviewDone(${idx})' style="background:#dcf0e0;color:#3a7d44">✓ Done</button>` : ''}
+        ${canMarkDone && resolved ? `<button onclick='markReviewReopen(${idx})' style="background:var(--surface2);color:var(--muted)">↺ Reopen</button>` : ''}
       </div>
     </div>
   `;
+}
+
+function toggleShowResolved(){
+  REVIEW_SHOW_RESOLVED = document.getElementById('show-resolved-toggle').checked;
+  loadReviewAll();
+}
+
+// ───────────── Mark Done flow ─────────────
+async function markReviewDone(idx){
+  const it = (window._REVIEW_ITEMS||[])[idx];
+  if(!it || it.source !== 'people') return;
+
+  const note = prompt(`Mark "${it.title}" as resolved.\n\nOptional: how did you resolve it? (1-2 sentences — used to identify similar items and as the resolution log)`,'');
+  if(note === null) return; // cancelled
+
+  try{
+    await resolveQueueItem(it.queue_id, note);
+  }catch(e){
+    alert('Failed to save: '+e.message);
+    return;
+  }
+
+  // Find similar pending items
+  const similar = findSimilarPending(it);
+  if(similar.length){
+    const titles = similar.map(s=>'• '+s.title).join('\n');
+    const ok = confirm(`Found ${similar.length} similar pending item${similar.length>1?'s':''} (same type: ${it.queue_type}):\n\n${titles}\n\nMark them resolved with the same note?`);
+    if(ok){
+      for(const s of similar){
+        try{ await resolveQueueItem(s.queue_id, note + ' [bulk]'); } catch(e){}
+      }
+    }
+  }
+  // Reload
+  await loadReviewAll();
+  refreshCounts();
+}
+
+async function markReviewReopen(idx){
+  const it = (window._REVIEW_ITEMS||[])[idx];
+  if(!it || it.source !== 'people') return;
+  try{
+    await updateQueueItem(it.queue_id, {status:'pending', resolution:null, resolved_date:null});
+  }catch(e){alert('Failed: '+e.message);return}
+  await loadReviewAll();
+  refreshCounts();
+}
+
+function findSimilarPending(it){
+  // Same queue_type, still pending, different id, similar attribute (best-effort)
+  return (window._REVIEW_ITEMS||[]).filter(o =>
+    o !== it &&
+    o.source === 'people' &&
+    o.status === 'pending' &&
+    o.queue_type === it.queue_type
+  );
+}
+
+async function resolveQueueItem(id, note){
+  return updateQueueItem(id, {
+    status: 'resolved',
+    resolution: note || '(no note)',
+    resolved_date: new Date().toISOString().slice(0,10)
+  });
+}
+
+async function updateQueueItem(id, patch){
+  if(!PEOPLE_QUEUE_CACHE) throw new Error('queue not loaded');
+  const q = PEOPLE_QUEUE_CACHE.parsed;
+  const item = q.items.find(i=>i.id===id);
+  if(!item) throw new Error('item not found');
+  Object.assign(item, patch);
+  const newContent = JSON.stringify(q, null, 2);
+  const res = await ghPutFile('Review/people-queue.json', newContent, PEOPLE_QUEUE_CACHE.sha,
+    `Review: ${patch.status==='resolved'?'resolve':'reopen'} ${id}`);
+  PEOPLE_QUEUE_CACHE.sha = res.content.sha;
+  PEOPLE_QUEUE_CACHE.content = newContent;
+  return res;
 }
 
 function reviewTileOpen(idx){
