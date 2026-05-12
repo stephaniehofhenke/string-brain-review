@@ -2091,10 +2091,29 @@ async function runTool(name, input){
     return {ok:true, total_count: data.total_count, items: (data.items||[]).slice(0,30).map(i=>({path:i.path, score:i.score}))};
   }
   if(name === 'archive_notion_page'){
+    // Try direct browser call first
     try{
       await notionArchivePage(input.page_id);
-      return {ok:true};
-    }catch(e){return {ok:false, error:e.message}}
+      return {ok:true, executed_directly:true, message:'Archived in Notion via direct API call.'};
+    }catch(e){
+      // Browser CORS / network failure → queue for server-side execution
+      const queueRes = await queueActionRequest({
+        action:'archive-notion-page',
+        page_id: input.page_id,
+        reason: 'browser CORS blocked direct call',
+        decided_by: 'chat',
+      });
+      if(queueRes.ok){
+        return {
+          ok:true,
+          executed_directly:false,
+          queued_for_server:true,
+          message:`Browser cannot call Notion API directly (CORS). I queued the archive to Review/action-requests.json — it will execute on the next nightly sync (02:15), or you can run \`python3 _scripts/nightly_projects_sync.py\` manually to execute it now.`,
+          underlying_error: e.message,
+        };
+      }
+      return {ok:false, error:`Notion direct call failed (${e.message}) and queuing also failed (${queueRes.message||'unknown'}).`};
+    }
   }
   if(name === 'finish'){
     return {ok:true, finished:true, summary: input.summary};
@@ -2849,8 +2868,15 @@ You have TOOLS to actually edit the vault and Notion. Use them when the user ask
   - delete_file(path, sha, message) — delete a file (commits)
   - list_directory(path) — list a vault folder
   - search_code(query) — GitHub code search for finding backlinks etc.
-  - archive_notion_page(page_id) — archive a Notion page. Note: this hits CORS from the browser today; if it fails, fall back to queueing an action-request by writing to Review/action-requests.json.
+  - archive_notion_page(page_id) — archive a Notion page. When called from this browser, the tool first tries a direct Notion API call; if that fails (Notion blocks browser CORS), the tool automatically queues an action-request to Review/action-requests.json that runs on the next nightly sync. Read the tool result's "executed_directly" and "queued_for_server" flags to know which happened.
   - finish(summary) — call when the task is done
+
+**CRITICAL HONESTY RULES — read carefully:**
+1. NEVER claim a change happened unless a tool returned ok:true for that exact change.
+2. For Notion specifically: if archive_notion_page returns "queued_for_server":true, you MUST tell the user the change is QUEUED (not done yet) and they need to wait for the next nightly sync OR run the local sync script.
+3. NEVER conflate vault edits with Notion edits. A write_file to a vault .md does NOT update Notion. If the user asks to update Notion, only archive_notion_page or queueActionRequest counts.
+4. If a tool fails (ok:false), state the failure verbatim and offer the action-requests.json fallback or a manual step.
+5. At the end of every multi-tool task, list exactly what changed (path of every file written/deleted; "queued" vs "executed" for Notion).
 
 Workflow: read context first, plan in 1-2 sentences, then execute. Be concise. Use markdown. Use canonical entity names.${contextNote}`;
 
