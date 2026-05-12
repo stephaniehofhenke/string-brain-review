@@ -49,9 +49,27 @@ a.broken-link{color:var(--red);text-decoration:line-through}
 .btn-danger{background:var(--red);color:#fff}
 
 /* ── App layout ── */
-#app{display:none;height:100vh;grid-template-columns:240px 1fr;grid-template-rows:1fr}
+#app{display:none;height:100vh;grid-template-columns:230px 340px 1fr;grid-template-rows:1fr;min-width:0}
 #app.ready{display:grid}
-#app.with-detail{grid-template-columns:240px 360px 1fr}
+#sidebar,#list-pane,#detail-pane,#chat-pane{min-width:0;min-height:0;overflow:hidden}
+
+/* ── Filter chips ── */
+.filter-bar{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px}
+.chip{font-size:11px;padding:4px 10px;border-radius:14px;background:var(--surface2);border:1px solid var(--border);color:var(--text2);cursor:pointer;font-weight:600;white-space:nowrap}
+.chip:hover{background:var(--border)}
+.chip.active{background:var(--teal);color:#fff;border-color:var(--teal)}
+.chip .ct{opacity:0.7;margin-left:3px;font-weight:500}
+
+/* ── Section headers in list ── */
+.list-section{padding:10px 18px 4px;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);font-weight:700;background:var(--bg);cursor:pointer;user-select:none;display:flex;justify-content:space-between;align-items:center}
+.list-section .caret{font-size:9px;transition:transform 0.15s}
+.list-section.collapsed .caret{transform:rotate(-90deg)}
+
+/* ── Breadcrumb / back ── */
+.crumbs{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);padding:6px 24px 0;background:var(--surface);border-bottom:1px solid var(--border)}
+.crumbs button{font-size:11px;color:var(--teal);font-weight:600;padding:2px 6px;border-radius:4px}
+.crumbs button:hover{background:var(--surface2)}
+.crumbs .sep{opacity:0.4}
 
 /* ── Sidebar ── */
 #sidebar{background:var(--sidebar);color:var(--sidebar-text);padding:14px 0;overflow-y:auto;display:flex;flex-direction:column}
@@ -231,6 +249,7 @@ a.broken-link{color:var(--red);text-decoration:line-through}
       <div class="search-box">
         <input id="search" placeholder="Search…" oninput="filterList()">
       </div>
+      <div class="filter-bar" id="filter-bar"></div>
     </div>
     <div class="list-items" id="list-items">
       <div class="loading"><span class="spinner"></span>&nbsp; Loading…</div>
@@ -274,6 +293,9 @@ let CURRENT_VIEW = '';
 let CURRENT_RECORDS = [];   // [{name, path, frontmatter, body, raw}]
 let CURRENT_SELECTED = null;
 let CACHE = {};             // view → records
+let FILTER_STATE = {};      // view → { key: value }
+let NAV_HISTORY = [];       // stack of {view, recordName}
+let SECTION_COLLAPSED = {}; // section-key → bool
 
 // ───────────── Bootstrap ─────────────
 function saveSetup(){
@@ -383,8 +405,13 @@ async function switchView(v){
     el.classList.toggle('active',el.dataset.view===v);
   });
   document.getElementById('list-title').innerHTML = `${cfg.label} <small id="list-count"></small>`;
+  document.getElementById('filter-bar').innerHTML = '';
+  document.getElementById('search').value = '';
   document.getElementById('chat-pane').classList.remove('active');
   document.getElementById('detail-pane').style.display='block';
+  // Reset detail pane to empty state on view switch
+  document.getElementById('detail-pane').innerHTML = '<div class="empty-state"><div class="icon">📁</div><div>Select a record from the list.</div></div>';
+  CURRENT_SELECTED = null;
 
   if(cfg.type==='chat'){
     document.getElementById('chat-pane').classList.add('active');
@@ -416,9 +443,45 @@ async function loadEntityList(folder){
     }));
     CACHE[folder] = CURRENT_RECORDS;
     renderList();
+    // Lazy-prefetch frontmatter for filter-aware views (Clients, Leads, Contacts, Team, Projects)
+    if(['Clients','Leads','Contacts','Team','Projects'].includes(folder)){
+      prefetchFrontmatters(folder, CURRENT_RECORDS);
+    }
   }catch(e){
     items.innerHTML = `<div class="empty-state"><div>Error: ${e.message}</div></div>`;
   }
+}
+
+// Fetch frontmatter for all records in parallel (limited concurrency).
+// As frontmatter loads, re-render to enable filters.
+async function prefetchFrontmatters(folder, records){
+  const CONCURRENCY = 8;
+  let i = 0;
+  let dirty = false;
+  let lastRender = Date.now();
+  async function worker(){
+    while(i < records.length){
+      const idx = i++;
+      const rec = records[idx];
+      if(rec.frontmatter) continue;
+      try{
+        const f = await ghFile(rec.path);
+        if(f){
+          const p = parseFrontmatter(f.content);
+          rec.frontmatter = p.frontmatter;
+          rec.body = p.body;
+          rec.sha = f.sha;
+          dirty = true;
+        }
+      }catch(e){/* skip */}
+      // Periodic re-render so chips light up progressively
+      if(dirty && Date.now()-lastRender > 600 && CURRENT_VIEW===folder){
+        renderList(); lastRender = Date.now(); dirty=false;
+      }
+    }
+  }
+  await Promise.all(Array(CONCURRENCY).fill(0).map(worker));
+  if(CURRENT_VIEW===folder) renderList();
 }
 
 async function loadEntityFlat(folder){
@@ -438,17 +501,135 @@ async function loadEntityFlat(folder){
   }
 }
 
+// ── Filter chip configs per view ──
+const FILTER_CONFIGS = {
+  Clients: {
+    key:'status',
+    chips:[
+      {id:'all', label:'All', match:()=>true},
+      {id:'active', label:'Active', match:r=>(r.frontmatter?.status||'active')==='active'},
+      {id:'inactive', label:'Inactive', match:r=>r.frontmatter?.status==='inactive'},
+      {id:'former', label:'Former', match:r=>r.frontmatter?.status==='former'},
+    ],
+    defaultChip:'active'
+  },
+  Contacts: {
+    key:'type',
+    chips:[
+      {id:'all', label:'All', match:()=>true},
+      {id:'client-contact', label:'Clients', match:r=>typeArr(r).includes('client-contact')},
+      {id:'lead-contact', label:'Leads', match:r=>typeArr(r).includes('lead-contact')},
+      {id:'network', label:'Network', match:r=>typeArr(r).some(t=>['network','partner','referral-source'].includes(t))},
+      {id:'vendor', label:'Vendors', match:r=>typeArr(r).includes('vendor')},
+      {id:'contractor', label:'Contractors', match:r=>typeArr(r).includes('contractor')},
+      {id:'friend', label:'Friends', match:r=>typeArr(r).includes('friend')},
+      {id:'former-team', label:'Former Team', match:r=>typeArr(r).includes('former-team')},
+      {id:'other', label:'Other', match:r=>typeArr(r).length===0 || typeArr(r).every(t=>['other'].includes(t))},
+    ],
+    defaultChip:'all'
+  },
+  Leads: {
+    key:'status',
+    chips:[
+      {id:'current', label:'Current', match:r=>(r.frontmatter?.status||'current')==='current'},
+      {id:'won', label:'Won', match:r=>r.frontmatter?.status==='won'},
+      {id:'all', label:'All (incl. lost)', match:()=>true},
+    ],
+    defaultChip:'current'
+  },
+  Projects: {
+    key:'status',
+    chips:[
+      {id:'all', label:'All', match:()=>true},
+      {id:'active', label:'Active', match:r=>(r.frontmatter?.status||'active')==='active'},
+      {id:'complete', label:'Complete', match:r=>r.frontmatter?.status==='complete'},
+      {id:'on-hold', label:'On hold', match:r=>r.frontmatter?.status==='on-hold'},
+    ],
+    defaultChip:'active'
+  }
+};
+
+function typeArr(r){
+  const t = r.frontmatter?.type;
+  if(!t) return [];
+  return Array.isArray(t) ? t : [t];
+}
+
+function renderFilterBar(){
+  const bar = document.getElementById('filter-bar');
+  const cfg = FILTER_CONFIGS[CURRENT_VIEW];
+  if(!cfg){bar.innerHTML='';return}
+  if(!FILTER_STATE[CURRENT_VIEW]) FILTER_STATE[CURRENT_VIEW] = cfg.defaultChip;
+  const active = FILTER_STATE[CURRENT_VIEW];
+  bar.innerHTML = cfg.chips.map(c=>{
+    const count = CURRENT_RECORDS.filter(c.match).length;
+    return `<button class="chip ${c.id===active?'active':''}" onclick="setFilter('${c.id}')">${escapeHtml(c.label)}<span class="ct">${count}</span></button>`;
+  }).join('');
+}
+
+function setFilter(id){
+  FILTER_STATE[CURRENT_VIEW] = id;
+  renderList();
+}
+
 function renderList(){
+  renderFilterBar();
   const items = document.getElementById('list-items');
   const q = document.getElementById('search').value.toLowerCase();
-  const filtered = CURRENT_RECORDS.filter(r=>!q||r.name.toLowerCase().includes(q));
+  const cfg = FILTER_CONFIGS[CURRENT_VIEW];
+  const activeChip = cfg ? cfg.chips.find(c=>c.id===FILTER_STATE[CURRENT_VIEW]) : null;
+
+  let filtered = CURRENT_RECORDS.filter(r=>!q || r.name.toLowerCase().includes(q));
+  if(activeChip) filtered = filtered.filter(activeChip.match);
   document.getElementById('list-count').textContent = filtered.length;
   if(filtered.length===0){items.innerHTML='<div class="empty-state"><div>No matches.</div></div>';return}
-  items.innerHTML = filtered.map(r=>`
-    <div class="list-item" data-name="${r.name.replace(/"/g,'&quot;')}" onclick="selectRecord('${r.name.replace(/'/g,"\\'")}')">
-      <div class="list-item-title">${r.name}</div>
+
+  // Special grouping for Leads: by stage; Lost collapsed at bottom
+  if(CURRENT_VIEW==='Leads' && !q){
+    const STAGES = ['inquiry','discovery','proposal','negotiation','won','lost'];
+    const groups = {};
+    filtered.forEach(r=>{
+      const stage = (r.frontmatter?.stage || r.frontmatter?.status || 'inquiry').toLowerCase();
+      const isLost = r.frontmatter?.status==='lost';
+      const key = isLost ? 'lost' : stage;
+      (groups[key] = groups[key] || []).push(r);
+    });
+    const sortedKeys = STAGES.filter(s=>groups[s]).concat(Object.keys(groups).filter(k=>!STAGES.includes(k)));
+    items.innerHTML = sortedKeys.map(k=>{
+      const recs = groups[k];
+      const collapsed = (k==='lost') ? (SECTION_COLLAPSED['lead-'+k] !== false) : !!SECTION_COLLAPSED['lead-'+k];
+      return `
+        <div class="list-section ${collapsed?'collapsed':''}" onclick="toggleSection('lead-${k}')">
+          <span>${k.toUpperCase()} (${recs.length})</span>
+          <span class="caret">▼</span>
+        </div>
+        <div style="${collapsed?'display:none':''}">
+          ${recs.map(listItemHtml).join('')}
+        </div>
+      `;
+    }).join('');
+  } else {
+    items.innerHTML = filtered.map(listItemHtml).join('');
+  }
+}
+
+function listItemHtml(r){
+  const stage = r.frontmatter?.stage;
+  const status = r.frontmatter?.status;
+  const sub = stage || status ? `<div class="list-item-sub">${[stage,status].filter(Boolean).join(' · ')}</div>` : '';
+  return `
+    <div class="list-item" data-name="${escapeAttr(r.name)}" onclick="selectRecord('${r.name.replace(/'/g,"\\'")}')">
+      <div class="list-item-title">${escapeHtml(r.name)}</div>
+      ${sub}
     </div>
-  `).join('');
+  `;
+}
+
+function toggleSection(key){
+  const isLost = key.endsWith('-lost');
+  const currently = isLost ? (SECTION_COLLAPSED[key] !== false) : !!SECTION_COLLAPSED[key];
+  SECTION_COLLAPSED[key] = !currently;
+  renderList();
 }
 
 function filterList(){renderList()}
@@ -457,6 +638,11 @@ async function selectRecord(name){
   const rec = CURRENT_RECORDS.find(r=>r.name===name);
   if(!rec){console.warn('not found:',name);return}
   document.querySelectorAll('.list-item').forEach(el=>el.classList.toggle('active',el.dataset.name===name));
+  // Push prev selection to nav history
+  if(CURRENT_SELECTED && CURRENT_SELECTED.name !== name){
+    NAV_HISTORY.push({view:CURRENT_VIEW, name:CURRENT_SELECTED.name});
+    if(NAV_HISTORY.length>30) NAV_HISTORY.shift();
+  }
   CURRENT_SELECTED = rec;
   const pane = document.getElementById('detail-pane');
   pane.innerHTML = '<div class="loading"><span class="spinner"></span>&nbsp; Loading…</div>';
@@ -485,7 +671,10 @@ function renderDetail(rec){
   if(fm.last_updated) meta.push(`Last updated: ${escapeHtml(fm.last_updated)}`);
 
   const pane = document.getElementById('detail-pane');
+  const back = NAV_HISTORY.length ? `<button onclick="navBack()">← Back</button><span class="sep">/</span>` : '';
+  const crumbs = `<div class="crumbs">${back}<button onclick="switchView('${CURRENT_VIEW}')">${escapeHtml(CURRENT_VIEW)}</button><span class="sep">/</span><span>${escapeHtml(rec.name)}</span></div>`;
   pane.innerHTML = `
+    ${crumbs}
     <div class="detail-header">
       <h1>${escapeHtml(rec.name)} ${statusBadge}</h1>
       <div class="detail-meta">${meta.join(' · ')}</div>
@@ -494,6 +683,24 @@ function renderDetail(rec){
     <div class="detail-body" id="detail-body">${renderMarkdown(rec.body || '_(empty record)_')}</div>
   `;
   bindWikilinks(pane);
+}
+
+function navBack(){
+  const prev = NAV_HISTORY.pop();
+  if(!prev) return;
+  if(prev.view !== CURRENT_VIEW){
+    switchView(prev.view).then(()=>setTimeout(()=>selectRecordNoHistory(prev.name),400));
+  } else {
+    selectRecordNoHistory(prev.name);
+  }
+}
+
+async function selectRecordNoHistory(name){
+  const rec = CURRENT_RECORDS.find(r=>r.name===name);
+  if(!rec)return;
+  CURRENT_SELECTED = null; // skip history push
+  await selectRecord(name);
+  NAV_HISTORY.pop(); // undo the push that selectRecord just did
 }
 
 function renderQuickLinks(fm){
