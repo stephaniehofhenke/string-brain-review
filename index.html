@@ -2950,29 +2950,40 @@ Workflow: read context first, plan in 1-2 sentences, then execute. Be concise. U
   const MAX_TURNS = 12;
   try{
     while(turn++ < MAX_TURNS){
-      const r = await fetch(CLAUDE_API,{
-        method:'POST',
-        headers:{
-          'x-api-key':ANTHROPIC_KEY,
-          'anthropic-version':'2023-06-01',
-          'content-type':'application/json',
-          'anthropic-dangerous-direct-browser-access':'true'
-        },
-        body:JSON.stringify({
-          model:CLAUDE_MODEL,
-          max_tokens:4000,
-          system:systemPrompt,
-          tools: TOOLS,
-          messages: window._API_MSGS
-        })
-      });
-      if(!r.ok){
-        const err = await r.text();
-        CHAT_HISTORY.push({role:'assistant',content:`Error: ${err.slice(0,400)}`});
+      let r, data, attempts = 0;
+      // Retry with exponential backoff on transient 429/500/502/503/529 errors
+      while(true){
+        attempts++;
+        r = await fetch(CLAUDE_API,{
+          method:'POST',
+          headers:{
+            'x-api-key':ANTHROPIC_KEY,
+            'anthropic-version':'2023-06-01',
+            'content-type':'application/json',
+            'anthropic-dangerous-direct-browser-access':'true'
+          },
+          body:JSON.stringify({
+            model:CLAUDE_MODEL,
+            max_tokens:4000,
+            system:systemPrompt,
+            tools: TOOLS,
+            messages: window._API_MSGS
+          })
+        });
+        if(r.ok) break;
+        const transient = [429,500,502,503,529].includes(r.status);
+        if(!transient || attempts >= 4){
+          const err = await r.text();
+          CHAT_HISTORY.push({role:'assistant',content:`API error (${r.status}, gave up after ${attempts} attempt${attempts>1?'s':''}):\n\`\`\`\n${err.slice(0,400)}\n\`\`\`\nTry sending your message again.`});
+          renderChat();
+          return;
+        }
+        const wait = Math.min(8000, 500 * Math.pow(2, attempts-1));
+        CHAT_HISTORY.push({role:'assistant', content:`⏳ Anthropic ${r.status} (transient) — retrying in ${(wait/1000).toFixed(1)}s (attempt ${attempts}/4)…`, _tool:true});
         renderChat();
-        return;
+        await new Promise(res=>setTimeout(res, wait));
       }
-      const data = await r.json();
+      data = await r.json();
       const blocks = data.content || [];
       window._API_MSGS.push({role:'assistant', content: blocks});
 
