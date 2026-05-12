@@ -315,10 +315,75 @@ function init(){
   document.getElementById('setup').style.display='none';
   document.getElementById('app').classList.add('ready');
   document.querySelectorAll('.nav-item').forEach(el=>{
-    el.addEventListener('click',()=>switchView(el.dataset.view));
+    el.addEventListener('click',()=>{
+      const v = el.dataset.view;
+      // User-initiated nav click → push new history entry
+      location.hash = '#/'+encodeURIComponent(v);
+    });
   });
-  switchView('Clients');
+  window.addEventListener('hashchange', handleHash);
   refreshCounts();
+  // Initial route
+  if(location.hash && location.hash.length>2){
+    handleHash();
+  } else {
+    location.hash = '#/Clients';
+  }
+}
+
+// ───────────── Hash router ─────────────
+// Hash formats:
+//   #/Clients
+//   #/Clients/Diabetes Digital
+//   #/Clients/Diabetes Digital/meetings/2026-04-16-STRING-DD-Bi-Weekly-Touchbase
+let _HASH_NAV_ACTIVE = false; // prevent loops when we set hash from code
+async function handleHash(){
+  if(_HASH_NAV_ACTIVE) return;
+  const raw = decodeURIComponent(location.hash.replace(/^#\//,''));
+  if(!raw) return;
+  const parts = raw.split('/');
+  const view = parts[0];
+  if(!VIEWS[view]){return}
+  // Switch view if different
+  if(CURRENT_VIEW !== view){
+    await switchView(view);
+  }
+  if(parts.length === 1) return;
+  // Top-level entity selection
+  if(parts.length === 2){
+    await waitForRecords();
+    selectRecord(parts[1]);
+    return;
+  }
+  // Sub-file
+  if(parts.length >= 4 && ['meetings','tickets','builds','elements','milestones','deliverables'].includes(parts[2])){
+    openSubFile(parts.join('/'), parts);
+  }
+}
+
+function updateHash(){
+  if(!CURRENT_SELECTED) return;
+  let path;
+  if(CURRENT_SELECTED._isSubFile){
+    path = CURRENT_SELECTED.path.replace(/\.md$/,'');
+  } else {
+    path = `${CURRENT_VIEW}/${CURRENT_SELECTED.name}`;
+  }
+  const target = '#/' + path.split('/').map(encodeURIComponent).join('/');
+  if(location.hash !== target){
+    _HASH_NAV_ACTIVE = true;
+    history.pushState(null, '', target);
+    setTimeout(()=>{_HASH_NAV_ACTIVE=false}, 50);
+  }
+}
+
+function copyShareLink(){
+  const url = location.href;
+  navigator.clipboard?.writeText(url).then(()=>{
+    const orig = event.target.textContent;
+    event.target.textContent = '✓ Copied';
+    setTimeout(()=>{event.target.textContent = orig}, 1500);
+  }).catch(()=>alert(url));
 }
 
 // ───────────── GitHub ─────────────
@@ -368,14 +433,68 @@ function bindWikilinks(container){
 }
 
 async function navigateWikilink(target){
-  // target like "Clients/Diabetes Digital/Diabetes Digital" or "Contacts/Name/Name"
+  // target may be: "Clients/Diabetes Digital/Diabetes Digital"
+  //                "Contacts/Sharon Palmer/Sharon Palmer"
+  //                "Clients/Foo/meetings/2026-04-16-..." (sub-file)
+  //                "Clients/Foo/tickets/12345-..."
+  //                "Clients/Foo/builds/Lead Pipeline/Lead Pipeline"
   const parts = target.split('/');
   if(parts.length<2){alert('Invalid wikilink: '+target);return}
-  const folder = parts[0]; // Clients, Contacts, etc.
+  const folder = parts[0];
   const name = parts[1];
-  switchView(folder);
-  // Wait for list to load, then select
-  setTimeout(()=>{selectRecord(name)},400);
+
+  // Sub-file (meeting / ticket / build element): open file directly
+  const isSubFile = parts.length>=4 && ['meetings','tickets','builds','elements','milestones','deliverables'].includes(parts[2]);
+  if(isSubFile){
+    return openSubFile(target, parts);
+  }
+  // Top-level entity: switch view + select once list is ready
+  await switchView(folder);
+  await waitForRecords();
+  selectRecord(name);
+  updateHash();
+}
+
+// Wait up to ~3s for CURRENT_RECORDS to populate after a view switch
+function waitForRecords(){
+  return new Promise(resolve=>{
+    let tries = 0;
+    const check = ()=>{
+      if(CURRENT_RECORDS.length || tries++ > 30) return resolve();
+      setTimeout(check, 100);
+    };
+    check();
+  });
+}
+
+// Open a sub-record (meeting/ticket/build) in the detail pane without disturbing list
+async function openSubFile(target, parts){
+  const path = target + '.md';
+  const pane = document.getElementById('detail-pane');
+  pane.innerHTML = '<div class="loading"><span class="spinner"></span>&nbsp; Loading…</div>';
+  // Make sure the right view is at least set in the sidebar (parent folder)
+  if(CURRENT_VIEW !== parts[0]){
+    // load list quietly so the breadcrumb parent record is selectable from breadcrumbs
+    await switchView(parts[0]);
+    await waitForRecords();
+  }
+  try{
+    const file = await ghFile(path);
+    if(!file){pane.innerHTML='<div class="empty-state">File not found: '+escapeHtml(path)+'</div>';return}
+    const parsed = parseFrontmatter(file.content);
+    const name = parts[parts.length-1];
+    const parentName = parts[1];
+    const subType = parts[2]; // meetings / tickets / builds
+    const rec = {
+      name, path, frontmatter: parsed.frontmatter, body: parsed.body, sha: file.sha,
+      _isSubFile: true, _parentView: parts[0], _parentName: parentName, _subType: subType
+    };
+    CURRENT_SELECTED = rec;
+    renderDetail(rec);
+    updateHash();
+  }catch(e){
+    pane.innerHTML = `<div class="empty-state">Error: ${escapeHtml(e.message)}</div>`;
+  }
 }
 
 // ───────────── Views ─────────────
@@ -677,6 +796,7 @@ async function selectRecord(name){
     rec.body = parsed.body;
     rec.sha = file.sha;
     renderDetail(rec);
+    updateHash();
   }catch(e){
     pane.innerHTML = `<div class="empty-state">Error loading: ${e.message}</div>`;
   }
@@ -695,7 +815,14 @@ function renderDetail(rec){
 
   const pane = document.getElementById('detail-pane');
   const back = NAV_HISTORY.length ? `<button onclick="navBack()">← Back</button><span class="sep">/</span>` : '';
-  const crumbs = `<div class="crumbs">${back}<button onclick="switchView('${CURRENT_VIEW}')">${escapeHtml(CURRENT_VIEW)}</button><span class="sep">/</span><span>${escapeHtml(rec.name)}</span></div>`;
+  let crumbsInner = `<button onclick="switchView('${CURRENT_VIEW}')">${escapeHtml(CURRENT_VIEW)}</button>`;
+  if(rec._isSubFile){
+    const parent = rec._parentName.replace(/'/g,"\\'");
+    crumbsInner += `<span class="sep">/</span><button onclick="navigateWikilink('${rec._parentView}/${parent}/${parent}')">${escapeHtml(rec._parentName)}</button>`;
+    crumbsInner += `<span class="sep">/</span><span style="opacity:0.7">${escapeHtml(rec._subType)}</span>`;
+  }
+  crumbsInner += `<span class="sep">/</span><span>${escapeHtml(rec.name)}</span>`;
+  const crumbs = `<div class="crumbs">${back}${crumbsInner}<button style="margin-left:auto" onclick="copyShareLink()" title="Copy shareable link">🔗</button></div>`;
   pane.innerHTML = `
     ${crumbs}
     <div class="detail-header">
