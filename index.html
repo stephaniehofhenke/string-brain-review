@@ -254,6 +254,30 @@ a.broken-link{color:var(--red);text-decoration:line-through}
 .note-input-wrap .note-actions{display:flex;gap:6px;margin-top:8px}
 .note-input-wrap .note-actions button{font-size:12px;padding:6px 12px;border-radius:5px;font-weight:600}
 
+/* Per-sub-item rows */
+.subitem-row{display:flex;gap:10px;align-items:center;padding:10px 12px;background:var(--surface);border:1px solid var(--border);border-radius:6px;margin-bottom:6px;flex-wrap:wrap}
+.subitem-row.done{opacity:0.45;background:#dcf0e0;border-color:#3a7d44}
+.subitem-row.skipped{opacity:0.5}
+.subitem-row .si-name{font-weight:600;font-size:13px;min-width:140px;flex-shrink:0}
+.subitem-row .si-meta{font-size:11px;color:var(--muted)}
+.subitem-row .si-picker{flex:1;min-width:180px}
+.subitem-row .si-picker input{width:100%;padding:5px 8px;border:1px solid var(--border);border-radius:5px;background:var(--bg);font-size:12px}
+.subitem-row .si-picker input:focus{outline:none;border-color:var(--teal)}
+.subitem-row .si-actions{display:flex;gap:4px;flex-wrap:wrap}
+.subitem-row .si-actions button{font-size:11px;padding:5px 9px;border-radius:5px;font-weight:600;background:var(--surface2);color:var(--text)}
+.subitem-row .si-actions button:hover{background:var(--border)}
+.subitem-row .si-actions button.primary{background:var(--teal);color:#fff}
+.subitem-row .si-actions button.danger{color:var(--red)}
+.subitem-row .si-status{font-size:11px;font-weight:700;color:#3a7d44}
+.subitem-bulk{padding:10px 12px;background:var(--surface2);border-radius:6px;margin-bottom:10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px}
+.subitem-bulk input{padding:5px 8px;border:1px solid var(--border);border-radius:5px;background:#fff;font-size:12px;min-width:160px}
+.subitem-bulk button{font-size:12px;padding:5px 10px;border-radius:5px;font-weight:600;background:var(--teal);color:#fff}
+.autocomplete-list{position:relative}
+.autocomplete-dropdown{position:absolute;top:100%;left:0;right:0;background:var(--surface);border:1px solid var(--border);border-radius:5px;max-height:180px;overflow-y:auto;z-index:50;box-shadow:var(--shadow-md);display:none}
+.autocomplete-dropdown.open{display:block}
+.autocomplete-dropdown .ac-item{padding:6px 10px;cursor:pointer;font-size:12px;border-bottom:1px solid var(--border)}
+.autocomplete-dropdown .ac-item:hover,.autocomplete-dropdown .ac-item.active{background:var(--surface2)}
+
 /* OLD grid styles kept for back-compat */
 .review-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;padding:20px 24px 40px}
 .review-tile{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px 14px;display:flex;flex-direction:column;gap:6px;cursor:pointer;transition:all 0.1s;position:relative}
@@ -1498,18 +1522,278 @@ function filterReviewDomain(d){
 // Back-compat for any old onclick that still calls filterReviewSource
 function filterReviewSource(d){ filterReviewDomain(d) }
 
-function openReviewItem(idx){
+// ───────────── Per-sub-item handling (for items with many sub-rows) ─────────────
+let CLIENT_NAMES_CACHE = null;
+async function loadClientNames(){
+  if(CLIENT_NAMES_CACHE) return CLIENT_NAMES_CACHE;
+  try{
+    const dir = await gh('Clients');
+    CLIENT_NAMES_CACHE = dir.filter(e=>e.type==='dir'&&!e.name.startsWith('_')&&!e.name.startsWith('.')).map(e=>e.name).sort();
+  }catch(e){ CLIENT_NAMES_CACHE = []; }
+  return CLIENT_NAMES_CACHE;
+}
+
+// Track per-sub-item state in memory: {parentId: {subKey: 'done'|'skipped'|'pending'}}
+const SUBITEM_STATE = {};
+function subItemKey(si, idx){ return si.name || ('si-'+idx); }
+
+function isMultiSubItem(it){
+  const raw = parseRawQueueItem(it);
+  return Array.isArray(raw.items) && raw.items.length > 1 && /contact|client/i.test(it.queue_type||'');
+}
+
+async function renderSubItemsBlock(it, idx){
+  const raw = parseRawQueueItem(it);
+  const subs = raw.items || [];
+  const parentId = it.queue_id || 'unknown';
+  const stateMap = SUBITEM_STATE[parentId] = SUBITEM_STATE[parentId] || {};
+  const clients = await loadClientNames();
+  const clientsJson = JSON.stringify(clients);
+
+  const pendingCount = subs.filter((si,i)=>!stateMap[subItemKey(si,i)] || stateMap[subItemKey(si,i)]==='pending').length;
+  const doneCount = subs.length - pendingCount;
+
+  const bulk = `
+    <div class="subitem-bulk">
+      <span><strong>${pendingCount}</strong> of ${subs.length} pending · <strong>${doneCount}</strong> done</span>
+      <input id="bulk-client" placeholder="Apply to all pending: type a client name…" oninput="setupAutocomplete(this, ${clientsJson.replace(/"/g,'&quot;')})">
+      <button onclick="bulkLinkContacts(${idx})">Link all pending to this client</button>
+    </div>
+  `;
+  const rows = subs.map((si, i)=>{
+    const key = subItemKey(si, i);
+    const status = stateMap[key] || 'pending';
+    const done = status === 'done';
+    const skipped = status === 'skipped';
+    const notionUrl = (()=>{
+      const ctx = si.context || '';
+      const m = ctx.match(/https?:\/\/(?:www\.)?notion\.so\/[^\s\)]+/);
+      if(m) return m[0];
+      return notionUrlFor('contacts', si.name);
+    })();
+    const meta = [si.email, si.likely_client?`likely: ${si.likely_client}`:null, si.missing?`missing: ${si.missing}`:null].filter(Boolean).join(' · ');
+    return `
+      <div class="subitem-row ${status}" id="sub-${idx}-${i}">
+        <div>
+          <div class="si-name">${escapeHtml(si.name||'(?)')}${notionUrl?` <a href="${escapeAttr(notionUrl)}" target="_blank" rel="noopener" title="Open in Notion" style="text-decoration:none">🟢</a>`:''}</div>
+          ${meta?`<div class="si-meta">${escapeHtml(meta)}</div>`:''}
+        </div>
+        ${done?'<span class="si-status">✓ done</span>':skipped?'<span class="si-status" style="color:var(--muted)">↩ skipped</span>':`
+          <div class="si-picker autocomplete-list">
+            <input id="pick-${idx}-${i}" placeholder="Pick a client…" oninput='setupAutocomplete(this, ${clientsJson.replace(/"/g,"&quot;")})'>
+          </div>
+          <div class="si-actions">
+            <button class="primary" onclick="subitemLink(${idx},${i})">Link</button>
+            <button onclick="subitemMarkOrphan(${idx},${i})">Orphan</button>
+            <button class="danger" onclick="subitemDelete(${idx},${i})">Delete</button>
+            <button onclick="subitemSkip(${idx},${i})">Skip</button>
+          </div>
+        `}
+      </div>
+    `;
+  }).join('');
+  return bulk + rows;
+}
+
+// Lightweight autocomplete that filters a list as user types
+function setupAutocomplete(input, list){
+  let arr;
+  try{ arr = typeof list === 'string' ? JSON.parse(list) : list }catch(e){ arr = []; }
+  let dd = input.parentElement.querySelector('.autocomplete-dropdown');
+  if(!dd){
+    dd = document.createElement('div');
+    dd.className = 'autocomplete-dropdown';
+    input.parentElement.appendChild(dd);
+  }
+  const q = input.value.toLowerCase().trim();
+  if(!q){ dd.classList.remove('open'); return; }
+  const matches = arr.filter(n=>n.toLowerCase().includes(q)).slice(0,10);
+  if(!matches.length){ dd.classList.remove('open'); return; }
+  dd.innerHTML = matches.map(m=>`<div class="ac-item" onclick="selectAutocomplete(this, '${m.replace(/'/g,"\\'")}')">${escapeHtml(m)}</div>`).join('');
+  dd.classList.add('open');
+}
+function selectAutocomplete(el, value){
+  const input = el.closest('.autocomplete-list').querySelector('input');
+  input.value = value;
+  el.parentElement.classList.remove('open');
+}
+
+// ── Per-sub-item action handlers ──
+function getSubItem(parentIdx, subIdx){
+  const it = (window._REVIEW_ITEMS||[])[parentIdx];
+  if(!it) return null;
+  const raw = parseRawQueueItem(it);
+  const si = (raw.items||[])[subIdx];
+  return {it, raw, si, key: subItemKey(si, subIdx)};
+}
+
+function markSubitemState(parentIdx, subIdx, state){
+  const ctx = getSubItem(parentIdx, subIdx);
+  if(!ctx) return;
+  const parentId = ctx.it.queue_id || 'unknown';
+  SUBITEM_STATE[parentId] = SUBITEM_STATE[parentId] || {};
+  SUBITEM_STATE[parentId][ctx.key] = state;
+  // Re-render
+  openReviewItem(parentIdx);
+}
+
+async function subitemLink(parentIdx, subIdx){
+  const ctx = getSubItem(parentIdx, subIdx);
+  if(!ctx) return;
+  const pickInput = document.getElementById(`pick-${parentIdx}-${subIdx}`);
+  const clientName = (pickInput?.value || '').trim();
+  if(!clientName){ alert('Type or pick a client first.'); return; }
+  // Execute via Claude agent (handles frontmatter parsing safely)
+  pickInput.disabled = true;
+  openExecModal(`Link ${ctx.si.name} → ${clientName}`);
+  try{
+    const summary = await execAgent(
+      `You are an executor agent inside Stephanie's STRING Marketing vault (GitHub repo "${REPO}"). Files are markdown with YAML frontmatter.
+
+Task: Link a contact to a STRING client by adding the client wikilink to the contact's associated_accounts frontmatter list.
+
+Steps:
+1. read_file Contacts/${ctx.si.name}/${ctx.si.name}.md
+2. Check the existing 'associated_accounts:' YAML list in frontmatter. The wikilink format is [[Clients/<ClientName>/<ClientName>|<ClientName>]].
+3. If the wikilink for "${clientName}" is already present, finish with "already linked".
+4. Otherwise add the new wikilink to the list (preserve all other lines + body), and write_file back.
+5. Also append a line to the body's "## Associated Accounts" section if present (otherwise create it). Format: "- [[Clients/${clientName}/${clientName}|${clientName}]]"
+6. Call finish with a one-sentence summary.
+
+Be precise and minimally invasive.`,
+      `Link contact "${ctx.si.name}" to client "${clientName}".`
+    );
+    await appendAuditLog(`**Link contact:** ${ctx.si.name} → ${clientName}\n\n${summary||''}`);
+    setExecDone(summary);
+    markSubitemState(parentIdx, subIdx, 'done');
+    maybeCloseParentItem(parentIdx);
+  }catch(e){
+    addExecStep('error', e.message);
+    setExecDone(null);
+  }
+}
+
+async function subitemMarkOrphan(parentIdx, subIdx){
+  markSubitemState(parentIdx, subIdx, 'done');
+  await appendAuditLog(`**Contact marked orphan:** ${getSubItem(parentIdx, subIdx)?.si.name}`);
+  maybeCloseParentItem(parentIdx);
+}
+
+async function subitemDelete(parentIdx, subIdx){
+  const ctx = getSubItem(parentIdx, subIdx);
+  if(!ctx) return;
+  if(!confirm(`Delete contact "${ctx.si.name}"? Reversible via git history.`)) return;
+  openExecModal(`Delete contact ${ctx.si.name}`);
+  try{
+    const summary = await execAgent(
+      `You are an executor agent inside Stephanie's STRING Marketing vault on GitHub repo "${REPO}".
+
+Task: delete a contact record cleanly.
+
+Steps:
+1. Read Contacts/${ctx.si.name}/${ctx.si.name}.md (confirm it exists)
+2. Search the vault for any wikilinks pointing to this contact
+3. For each backlink file: read, replace the wikilink with the plain name in italics (*${ctx.si.name}*), write back
+4. Delete the contact's .md file
+5. Delete the empty folder if applicable (check via list_directory)
+6. Call finish with a summary
+
+Only operate on this one contact.`,
+      `Delete contact: ${ctx.si.name}`
+    );
+    await appendAuditLog(`**Delete contact (from sub-item):** ${ctx.si.name}\n\n${summary||''}`);
+    setExecDone(summary);
+    markSubitemState(parentIdx, subIdx, 'done');
+    maybeCloseParentItem(parentIdx);
+  }catch(e){
+    addExecStep('error', e.message);
+    setExecDone(null);
+  }
+}
+
+function subitemSkip(parentIdx, subIdx){
+  markSubitemState(parentIdx, subIdx, 'skipped');
+}
+
+async function bulkLinkContacts(parentIdx){
+  const it = (window._REVIEW_ITEMS||[])[parentIdx];
+  if(!it) return;
+  const raw = parseRawQueueItem(it);
+  const subs = raw.items || [];
+  const parentId = it.queue_id || 'unknown';
+  const stateMap = SUBITEM_STATE[parentId] = SUBITEM_STATE[parentId] || {};
+  const clientName = (document.getElementById('bulk-client')?.value || '').trim();
+  if(!clientName){ alert('Type a client name first.'); return; }
+  const pending = subs.map((si,i)=>({si,i})).filter(({si,i})=>{
+    const s = stateMap[subItemKey(si,i)];
+    return !s || s === 'pending';
+  });
+  if(!pending.length){ alert('No pending sub-items.'); return; }
+  if(!confirm(`Link ${pending.length} pending contact(s) to "${clientName}"?`)) return;
+  openExecModal(`Bulk link ${pending.length} → ${clientName}`);
+  try{
+    const summary = await execAgent(
+      `You are an executor agent inside Stephanie's STRING Marketing vault (GitHub repo "${REPO}"). Files are markdown with YAML frontmatter.
+
+Task: link MULTIPLE contacts to the same STRING client. For each contact in the list:
+1. read_file Contacts/<Name>/<Name>.md
+2. Check the associated_accounts: YAML list. Wikilink format is [[Clients/${clientName}/${clientName}|${clientName}]].
+3. If already linked, skip. Otherwise add the wikilink to the list and write_file back.
+4. Also update the body's "## Associated Accounts" section (create if missing): append "- [[Clients/${clientName}/${clientName}|${clientName}]]"
+
+Be careful, batch the edits, and finish with a per-contact summary.`,
+      `Link these contacts to "${clientName}":\n${pending.map(({si})=>'- '+si.name).join('\n')}`
+    );
+    await appendAuditLog(`**Bulk link:** ${pending.length} contacts → ${clientName}\n\n${summary||''}`);
+    setExecDone(summary);
+    pending.forEach(({si,i})=>{ stateMap[subItemKey(si,i)] = 'done'; });
+    openReviewItem(parentIdx);
+    maybeCloseParentItem(parentIdx);
+  }catch(e){
+    addExecStep('error', e.message);
+    setExecDone(null);
+  }
+}
+
+async function maybeCloseParentItem(parentIdx){
+  const it = (window._REVIEW_ITEMS||[])[parentIdx];
+  if(!it) return;
+  const raw = parseRawQueueItem(it);
+  const subs = raw.items || [];
+  const parentId = it.queue_id;
+  const stateMap = SUBITEM_STATE[parentId] || {};
+  const allDone = subs.every((si,i)=>{
+    const s = stateMap[subItemKey(si,i)];
+    return s === 'done' || s === 'skipped';
+  });
+  if(allDone && it.queue_id){
+    try{
+      await resolveQueueItem(it.queue_id, `All ${subs.length} sub-items processed individually.`);
+      await loadReviewAll();
+      refreshCounts();
+    }catch(e){console.warn('Failed to resolve parent:',e)}
+  }
+}
+
+async function openReviewItem(idx){
   const it = (window._REVIEW_ITEMS||[])[idx];
   if(!it) return;
   document.querySelectorAll('.review-row').forEach(r=>r.classList.toggle('active',r.dataset.idx==String(idx)));
   const pane = document.getElementById('detail-pane');
   const ref = it.ref || {};
   let sub = '';
+  const multiSubMode = isMultiSubItem(it);
   // Pull sub-items from the raw queue record if available
   if(ref.body){
     try{
       const raw = JSON.parse(ref.body);
-      if(Array.isArray(raw.items) && raw.items.length){
+      if(multiSubMode){
+        // Render per-sub-item interactive rows (with picker + action buttons)
+        sub = `<div class="sub-items">
+          <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);font-weight:700;margin-bottom:6px">Decide per item · ${raw.items.length} contacts</div>
+          ${await renderSubItemsBlock(it, idx)}
+        </div>`;
+      } else if(Array.isArray(raw.items) && raw.items.length){
         sub = `<div class="sub-items">
           <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);font-weight:700;margin-bottom:6px">Details</div>
           ${raw.items.map(si=>{
@@ -1522,8 +1806,8 @@ function openReviewItem(idx){
   }
   const canMarkDone = it.source === 'people' && it.status !== 'resolved';
   const isResolved = it.status === 'resolved';
-  // Decision choices block — primary action UX
-  const choices = canMarkDone ? getChoicesForItem(it) : [];
+  // Decision choices block — primary action UX (hide when sub-item mode handles things per-row)
+  const choices = (canMarkDone && !multiSubMode) ? getChoicesForItem(it) : [];
   const choicesBlock = choices.length ? `
     <div class="decision-choices" id="choice-container">
       <div class="label">Choose an action</div>
