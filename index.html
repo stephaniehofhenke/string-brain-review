@@ -1672,8 +1672,7 @@ function renderAutocompleteOptions(input, dd){
   let html = '';
   if(matches.length){
     html += matches.map(m=>{
-      const safe = String(m).replace(/[ -"'\\<>]/g, '');
-      return `<div class="ac-item" data-value="${escapeAttr(safe)}" onmousedown="selectAutocomplete(this)">${escapeHtml(m)}</div>`;
+      return `<div class="ac-item" data-value="${escapeAttr(m)}" onmousedown="selectAutocomplete(this)">${escapeHtml(m)}</div>`;
     }).join('');
   } else {
     html += `<div class="ac-empty">No clients match "${escapeHtml(q)}"</div>`;
