@@ -282,6 +282,10 @@ a.broken-link{color:var(--red);text-decoration:line-through}
       <label>Claude API Key</label>
       <input id="setup-anthropic" type="password" placeholder="sk-ant-...">
     </div>
+    <div class="field">
+      <label>Notion API Key <span style="font-weight:400;color:var(--muted)">(optional — enables auto-archive)</span></label>
+      <input id="setup-notion" type="password" placeholder="ntn_...">
+    </div>
     <button class="btn" onclick="saveSetup()">Continue</button>
   </div>
 </div>
@@ -378,6 +382,7 @@ const CLAUDE_MODEL = 'claude-sonnet-4-5';
 // ───────────── State ─────────────
 let GH_TOKEN = localStorage.getItem('gh_token') || '';
 let ANTHROPIC_KEY = localStorage.getItem('anthropic_key') || '';
+let NOTION_KEY = localStorage.getItem('notion_key') || '';
 let CURRENT_VIEW = '';
 let CURRENT_RECORDS = [];   // [{name, path, frontmatter, body, raw}]
 let CURRENT_SELECTED = null;
@@ -391,10 +396,12 @@ let TEAM_LAST_CONTACT = null; // loaded from _scripts/data/team-last-contact.jso
 function saveSetup(){
   const gh=document.getElementById('setup-gh').value.trim();
   const ak=document.getElementById('setup-anthropic').value.trim();
-  if(!gh||!ak){alert('Both tokens required');return}
+  const nk=(document.getElementById('setup-notion')?.value||'').trim();
+  if(!gh||!ak){alert('GitHub + Claude tokens required');return}
   localStorage.setItem('gh_token',gh);
   localStorage.setItem('anthropic_key',ak);
-  GH_TOKEN=gh;ANTHROPIC_KEY=ak;
+  if(nk) localStorage.setItem('notion_key',nk);
+  GH_TOKEN=gh;ANTHROPIC_KEY=ak;NOTION_KEY=nk;
   document.getElementById('setup').style.display='none';
   init();
 }
@@ -490,6 +497,43 @@ async function ghFile(path){
   // GitHub returns base64-encoded content; decode (handles utf-8)
   const decoded = decodeURIComponent(escape(atob(data.content.replace(/\n/g,''))));
   return {content:decoded, sha:data.sha, path:data.path};
+}
+
+// ───────────── Notion REST API ─────────────
+// Notion blocks browser CORS by default — we route via a permissive CORS proxy
+// only when the call is initiated by a user click (no auto-execution).
+// Alternative deployment options:
+//   - Run a Cloudflare Worker as a proxy (Phase 2c security hardening)
+//   - Use the official Notion JS SDK from a Node server
+// For now we attempt direct call; if CORS blocks, fall back to a userscript-style notice.
+async function notionArchivePage(pageId){
+  if(!NOTION_KEY) throw new Error('Notion API key not set. Add it in Settings.');
+  const cleanId = pageId.replace(/-/g,'').match(/.{32}/)?.[0];
+  if(!cleanId) throw new Error('Invalid Notion page ID: '+pageId);
+  const url = `https://api.notion.com/v1/pages/${cleanId}`;
+  const r = await fetch(url, {
+    method:'PATCH',
+    headers:{
+      'Authorization': `Bearer ${NOTION_KEY}`,
+      'Notion-Version': '2022-06-28',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({archived: true}),
+  });
+  if(!r.ok){
+    const errText = await r.text();
+    if(r.status === 0 || errText.includes('CORS')){
+      throw new Error('Browser blocked by CORS. Open the duplicate URL manually and delete in Notion.');
+    }
+    throw new Error(`Notion ${r.status}: ${errText.slice(0,200)}`);
+  }
+  return r.json();
+}
+
+// Extract Notion page UUID from a URL like https://www.notion.so/Title-323f5364d1df8052...
+function notionIdFromUrl(url){
+  const m = (url||'').match(/([0-9a-f]{32})/i);
+  return m ? m[1] : null;
 }
 
 async function ghPutFile(path, content, sha, message){
@@ -1439,18 +1483,26 @@ function getChoicesForItem(it){
   if(q === 'notion-duplicate-project'){
     const dropUrl = (raw.items||[]).find(s=>(s.context||'').startsWith('http') && /Duplicate to delete/i.test(s.name||''))?.context;
     const keptUrl = (raw.items||[]).find(s=>(s.context||'').startsWith('http') && /Kept/i.test(s.name||''))?.context;
-    const teamworkId = (raw.description||'').match(/ID (\d+)/)?.[1];
     return [
-      {id:'open-dup', label:'Open duplicate in Notion to delete', hint:'opens in new tab', style:'primary',
-        run: async ()=>{ if(dropUrl){window.open(dropUrl,'_blank')}; return {ok:true, message:'Opened duplicate. Delete the page in Notion, then mark done.'} },
+      {id:'archive-auto', label:'🤖 Archive duplicate in Notion (auto)', hint: NOTION_KEY ? 'I archive it directly via Notion API' : 'requires Notion key in Settings', style:'primary',
+        run: async ()=>{
+          if(!NOTION_KEY) return {ok:false, message:'Notion API key not set — add it in Settings to enable auto-archive.'};
+          const id = notionIdFromUrl(dropUrl);
+          if(!id) return {ok:false, message:'Could not extract page ID from URL.'};
+          await notionArchivePage(id);
+          return {ok:true, message:'Archived duplicate in Notion (reversible — it\'s in Notion trash).'};
+        },
+        autoResolve:true, resolveNote:'Archived duplicate via API'},
+      {id:'open-dup', label:'Open duplicate in Notion to delete manually', hint:'opens in new tab',
+        run: async ()=>{ if(dropUrl){window.open(dropUrl,'_blank')}; return {ok:true, message:'Opened duplicate. Delete in Notion, then come back to mark done.'} },
         autoResolve:false},
       {id:'view-kept', label:'View kept project in Notion', hint:'opens in new tab',
         run: async ()=>{ if(keptUrl){window.open(keptUrl,'_blank')}; return {ok:true, message:'Opened the kept project.'} },
         autoResolve:false},
-      {id:'mark-resolved', label:'Mark resolved — I deleted it in Notion', hint:'closes this issue', style:'',
+      {id:'mark-resolved', label:'Mark resolved — already deleted', hint:'closes this issue',
         run: async ()=>({ok:true, message:'Marked resolved.'}),
-        autoResolve:true, resolveNote:'Deleted duplicate in Notion'},
-      {id:'defer', label:'Skip for now', hint:'closes with deferred note', style:'',
+        autoResolve:true, resolveNote:'Already deleted in Notion'},
+      {id:'defer', label:'Skip for now',
         run: async ()=>({ok:true, message:'Deferred.'}),
         autoResolve:true, resolveNote:'Deferred — clean up later'},
     ];
@@ -1870,6 +1922,10 @@ function renderSettings(){
           <label>Claude API Key</label>
           <input type="password" value="${escapeAttr(ANTHROPIC_KEY)}" id="set-anth">
         </div>
+        <div class="field">
+          <label>Notion API Key <span style="font-weight:400;color:var(--muted)">(enables auto-archive)</span></label>
+          <input type="password" value="${escapeAttr(NOTION_KEY)}" id="set-notion">
+        </div>
         <button class="btn-sm btn-primary" style="margin-top:14px" onclick="updateTokens()">Save</button>
         <button class="btn-sm" style="margin-top:14px;margin-left:6px" onclick="clearCache()">Clear cache</button>
         <button class="btn-sm btn-danger" style="margin-top:14px;margin-left:6px" onclick="resetSetup()">Sign out</button>
@@ -1881,8 +1937,10 @@ function renderSettings(){
 function updateTokens(){
   GH_TOKEN = document.getElementById('set-gh').value.trim();
   ANTHROPIC_KEY = document.getElementById('set-anth').value.trim();
+  NOTION_KEY = (document.getElementById('set-notion')?.value||'').trim();
   localStorage.setItem('gh_token',GH_TOKEN);
   localStorage.setItem('anthropic_key',ANTHROPIC_KEY);
+  if(NOTION_KEY) localStorage.setItem('notion_key', NOTION_KEY); else localStorage.removeItem('notion_key');
   CACHE = {};
   alert('Saved');
 }
