@@ -442,6 +442,33 @@ const CLAUDE_MODEL = 'claude-sonnet-4-5';
 let GH_TOKEN = localStorage.getItem('gh_token') || '';
 let ANTHROPIC_KEY = localStorage.getItem('anthropic_key') || '';
 let NOTION_KEY = localStorage.getItem('notion_key') || '';
+let RUNNER_SECRET = localStorage.getItem('runner_secret') || '';
+const RUNNER_URL = 'http://127.0.0.1:8765';
+
+// Call the local action runner; returns {ok, data} or {ok:false, error}.
+// Used to execute Notion writes + sync scripts instantly from the dashboard
+// (avoids browser CORS to Notion, avoids Terminal).
+async function runner(path, body){
+  if(!RUNNER_SECRET) return {ok:false, error:'no_runner_secret', message:'Local action runner not configured.'};
+  try{
+    const r = await fetch(RUNNER_URL + path, {
+      method:'POST',
+      headers:{'Content-Type':'application/json', 'X-Auth': RUNNER_SECRET},
+      body: JSON.stringify(body || {}),
+    });
+    const data = await r.json().catch(()=>({ok:false, error:'bad_json'}));
+    return {ok: r.ok && data.ok !== false, status: r.status, data};
+  }catch(e){
+    return {ok:false, error:'runner_offline', message:`Local runner not reachable: ${e.message}`};
+  }
+}
+
+async function runnerAlive(){
+  try{
+    const r = await fetch(RUNNER_URL + '/ping', {method:'GET'});
+    return r.ok;
+  }catch(e){ return false }
+}
 let CURRENT_VIEW = '';
 let CURRENT_RECORDS = [];   // [{name, path, frontmatter, body, raw}]
 let CURRENT_SELECTED = null;
@@ -2108,31 +2135,31 @@ async function runTool(name, input){
     return {ok:true, total_count: data.total_count, items: (data.items||[]).slice(0,30).map(i=>({path:i.path, score:i.score}))};
   }
   if(name === 'archive_notion_page'){
-    // Try direct browser call first
+    // 1. Local runner (instant; no CORS)
+    const lr = await runner('/archive-notion-page', {page_id: input.page_id});
+    if(lr.ok){
+      return {ok:true, executed_directly:true, via:'local-runner', message:'Archived in Notion (via local action runner — instant).'};
+    }
+    // 2. Direct browser call (only works if Notion ever enables CORS)
     try{
       await notionArchivePage(input.page_id);
-      return {ok:true, executed_directly:true, message:'Archived in Notion via direct API call.'};
+      return {ok:true, executed_directly:true, via:'browser', message:'Archived in Notion via direct API call.'};
     }catch(e){
-      // Browser CORS / network failure → queue for server-side execution
-      const queueRes = await queueActionRequest({
-        action:'archive-notion-page',
-        page_id: input.page_id,
-        reason: 'browser CORS blocked direct call',
-        decided_by: 'chat',
-      });
+      // 3. Queue for nightly sync
+      const queueRes = await queueActionRequest({action:'archive-notion-page', page_id: input.page_id, reason:'fallback queue', decided_by:'chat'});
       if(queueRes.ok){
-        return {
-          ok:true,
-          executed_directly:false,
-          queued_for_server:true,
-          message:`Browser cannot call Notion API directly (CORS). I queued the archive to Review/action-requests.json — it will execute on the next nightly sync (02:15), or you can run \`python3 _scripts/nightly_projects_sync.py\` manually to execute it now.`,
-          underlying_error: e.message,
-        };
+        return {ok:true, executed_directly:false, queued_for_server:true, message:`Couldn't execute live (local runner: ${lr.error||lr.message||'offline'}; browser: ${e.message}). Queued for next nightly sync.`};
       }
-      return {ok:false, error:`Notion direct call failed (${e.message}) and queuing also failed (${queueRes.message||'unknown'}).`};
+      return {ok:false, error:`All paths failed. Runner: ${lr.message||lr.error}. Browser: ${e.message}. Queue: ${queueRes.message}.`};
     }
   }
   if(name === 'update_notion_page'){
+    // 1. Local runner (instant)
+    const lr = await runner('/update-notion-page', {page_id: input.page_id, properties: input.properties || {}});
+    if(lr.ok){
+      return {ok:true, executed_directly:true, via:'local-runner', message:'Updated Notion page (via local action runner — instant).'};
+    }
+    // 2. Queue fallback
     const queueRes = await queueActionRequest({
       action:'update-notion-page',
       page_id: input.page_id,
@@ -2141,7 +2168,7 @@ async function runTool(name, input){
       decided_by:'chat',
     });
     if(queueRes.ok){
-      return {ok:true, queued_for_server:true, message:`Queued Notion page update (will run on next sync at 02:15, or run \`python3 _scripts/nightly_projects_sync.py\` to execute now).`};
+      return {ok:true, queued_for_server:true, message:`Local runner unavailable (${lr.error||lr.message||'?'}). Queued for next nightly sync at 02:15.`};
     }
     return {ok:false, error: queueRes.message || 'queue failed'};
   }
@@ -2830,6 +2857,7 @@ async function renderHome(){
 function renderSettings(){
   document.getElementById('list-items').innerHTML = '';
   document.getElementById('list-count').textContent = '';
+  setTimeout(checkRunnerStatus, 100);
   document.getElementById('detail-pane').innerHTML = `
     <div class="detail-header"><h1>Settings</h1></div>
     <div class="detail-body">
@@ -2846,7 +2874,13 @@ function renderSettings(){
           <label>Notion API Key <span style="font-weight:400;color:var(--muted)">(enables auto-archive)</span></label>
           <input type="password" value="${escapeAttr(NOTION_KEY)}" id="set-notion">
         </div>
+        <div class="field">
+          <label>Local Action Runner Secret <span style="font-weight:400;color:var(--muted)">(enables instant Notion edits + sync from this Mac — get the secret by visiting <a href="http://127.0.0.1:8765/secret" target="_blank">http://127.0.0.1:8765/secret</a>)</span></label>
+          <input type="password" value="${escapeAttr(RUNNER_SECRET)}" id="set-runner" placeholder="paste secret here">
+          <div id="runner-status" style="font-size:11px;margin-top:4px;color:var(--muted)">Checking runner status…</div>
+        </div>
         <button class="btn-sm btn-primary" style="margin-top:14px" onclick="updateTokens()">Save</button>
+        <button class="btn-sm" style="margin-top:14px;margin-left:6px" onclick="runSyncNow()">Run sync now</button>
         <button class="btn-sm" style="margin-top:14px;margin-left:6px" onclick="clearCache()">Clear cache</button>
         <button class="btn-sm btn-danger" style="margin-top:14px;margin-left:6px" onclick="resetSetup()">Sign out</button>
       </div>
@@ -2858,11 +2892,48 @@ function updateTokens(){
   GH_TOKEN = document.getElementById('set-gh').value.trim();
   ANTHROPIC_KEY = document.getElementById('set-anth').value.trim();
   NOTION_KEY = (document.getElementById('set-notion')?.value||'').trim();
+  RUNNER_SECRET = (document.getElementById('set-runner')?.value||'').trim();
   localStorage.setItem('gh_token',GH_TOKEN);
   localStorage.setItem('anthropic_key',ANTHROPIC_KEY);
   if(NOTION_KEY) localStorage.setItem('notion_key', NOTION_KEY); else localStorage.removeItem('notion_key');
+  if(RUNNER_SECRET) localStorage.setItem('runner_secret', RUNNER_SECRET); else localStorage.removeItem('runner_secret');
   CACHE = {};
   alert('Saved');
+  checkRunnerStatus();
+}
+
+async function checkRunnerStatus(){
+  const el = document.getElementById('runner-status');
+  if(!el) return;
+  const alive = await runnerAlive();
+  if(!alive){
+    el.innerHTML = '🔴 Runner offline — actions will queue for nightly sync instead of running instantly.';
+    el.style.color = '#a02020';
+    return;
+  }
+  if(!RUNNER_SECRET){
+    el.innerHTML = '🟡 Runner online but no secret set — actions can\'t use it yet.';
+    el.style.color = '#a78700';
+    return;
+  }
+  // Auth check via /run-action-requests with empty body (just to validate auth)
+  const r = await fetch(RUNNER_URL + '/run-action-requests', {method:'POST', headers:{'Content-Type':'application/json','X-Auth':RUNNER_SECRET}, body:'{}'}).catch(()=>null);
+  if(r && r.status === 401){
+    el.innerHTML = '🟡 Runner online but secret rejected — paste the secret from <a href="http://127.0.0.1:8765/secret" target="_blank">http://127.0.0.1:8765/secret</a>.';
+    el.style.color = '#a78700';
+    return;
+  }
+  el.innerHTML = '🟢 Runner online + authenticated — Notion edits + syncs run instantly from chat.';
+  el.style.color = '#3a7d44';
+}
+
+async function runSyncNow(){
+  const lr = await runner('/run-action-requests', {});
+  if(lr.ok){
+    alert('Sync started in background. Vault will auto-pull within 2 min.');
+  }else{
+    alert('Sync failed: '+(lr.error||lr.message));
+  }
 }
 
 function clearCache(){CACHE={};alert('Cache cleared')}
