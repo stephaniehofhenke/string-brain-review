@@ -178,7 +178,50 @@ a.broken-link{color:var(--red);text-decoration:line-through}
 .settings-form{max-width:500px;padding:20px 0}
 .settings-form .field input{font-family:Menlo,Monaco,monospace;font-size:12px}
 
-/* ── Review grid ── */
+/* ── Review list rows (in list-pane) ── */
+.review-row{padding:11px 16px;cursor:pointer;border-bottom:1px solid var(--border);transition:background 0.1s;display:flex;flex-direction:column;gap:3px}
+.review-row:hover{background:var(--surface2)}
+.review-row.active{background:var(--surface2);border-left:3px solid var(--gold);padding-left:13px}
+.review-row.resolved{opacity:0.45}
+.review-row .row-top{display:flex;align-items:center;gap:6px;font-size:10px;text-transform:uppercase;letter-spacing:0.5px}
+.review-row .row-pill{padding:2px 7px;border-radius:5px;background:var(--surface2);color:var(--muted);font-weight:700;font-size:9px}
+.review-row .row-pill.people{background:#e8f4f8;color:#1C5967}
+.review-row .row-pill.qa{background:#fff4d0;color:#a78700}
+.review-row .row-pill.docs{background:#e0e8f0;color:#3a4fa0}
+.review-row .row-pill.error{background:#f0e0e0;color:#a02020}
+.review-row .row-pill.inbox{background:#f5e8d8;color:#a85e1c}
+.review-row .row-pill.project{background:#dcf0e0;color:#3a7d44}
+.review-row .row-age{margin-left:auto;color:var(--muted);font-weight:500;font-size:10px}
+.review-row .row-title{font-weight:600;font-size:13.5px;color:var(--text);line-height:1.3}
+.review-row .row-decision{font-size:11.5px;color:var(--text2);line-height:1.35}
+.review-row .row-decision strong{color:var(--text)}
+
+/* Detail flyout */
+.review-detail{padding:24px 28px 60px;max-width:760px}
+.review-detail h1{font-size:20px;font-weight:700;line-height:1.3;margin-bottom:6px}
+.review-detail .decision-box{background:#fff8d6;border-left:3px solid var(--gold-dark);padding:12px 14px;border-radius:0 6px 6px 0;margin:14px 0 18px}
+.review-detail .decision-box .label{font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--gold-dark);font-weight:700;margin-bottom:4px}
+.review-detail .decision-box .text{font-size:14px;color:var(--text);font-weight:500}
+.review-detail .sub-items{margin:14px 0}
+.review-detail .sub-items .sub-item{padding:8px 12px;background:var(--surface);border:1px solid var(--border);border-radius:6px;margin-bottom:6px;font-size:12.5px}
+.review-detail .sub-items .sub-item strong{display:block;margin-bottom:2px}
+.review-detail .sub-items .sub-item .sub-link{font-size:11px;color:var(--teal);word-break:break-all}
+.review-detail .action-row{display:flex;flex-wrap:wrap;gap:8px;margin-top:20px;padding-top:16px;border-top:1px solid var(--border)}
+.review-detail .action-row button{font-size:13px;padding:8px 16px;border-radius:6px;font-weight:600}
+.review-detail .action-row .btn-done{background:#3a7d44;color:#fff}
+.review-detail .action-row .btn-done:hover{opacity:0.9}
+.review-detail .action-row .btn-chat{background:var(--teal);color:#fff}
+.review-detail .action-row .btn-open{background:var(--surface2);color:var(--text)}
+.review-detail .action-row .btn-reopen{background:var(--surface2);color:var(--muted)}
+.review-detail .resolution-note{margin-top:12px;padding:10px 12px;background:#dcf0e0;border-radius:6px;font-size:12px;color:#2c5e36}
+.review-detail .resolution-note strong{display:block;margin-bottom:3px}
+.note-input-wrap{margin-top:14px;padding:12px 14px;background:var(--surface2);border-radius:6px}
+.note-input-wrap label{display:block;font-size:11px;font-weight:600;color:var(--text2);margin-bottom:6px;text-transform:uppercase;letter-spacing:0.4px}
+.note-input-wrap textarea{width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:5px;background:var(--bg);font-size:13px;resize:vertical;min-height:60px}
+.note-input-wrap .note-actions{display:flex;gap:6px;margin-top:8px}
+.note-input-wrap .note-actions button{font-size:12px;padding:6px 12px;border-radius:5px;font-weight:600}
+
+/* OLD grid styles kept for back-compat */
 .review-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;padding:20px 24px 40px}
 .review-tile{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px 14px;display:flex;flex-direction:column;gap:6px;cursor:pointer;transition:all 0.1s;position:relative}
 .review-tile:hover{border-color:var(--teal);box-shadow:var(--shadow-md)}
@@ -1002,11 +1045,13 @@ async function loadReviewAll(){
         source:'people', source_label:'People',
         status: it.status,
         title: it.title || '(untitled)',
-        desc: (it.description||'') + (it.items?.length ? ` — ${it.items.length} sub-item${it.items.length>1?'s':''}`:''),
+        desc: it.description||'',
         action_target:{view:'review-people'},
         queue_id: it.id,
         queue_type: it.type,
         queue_source: it.source,
+        created_date: it.created_date || it.date_added || '',
+        resolved_date: it.resolved_date || '',
         ref:{kind:'people-queue-item', id:it.id, body:JSON.stringify(it,null,2), title:it.title}
       });
     });
@@ -1102,57 +1147,237 @@ async function loadReviewAll(){
     });
   }catch(e){/* snapshot may not exist yet */}
 
-  // Render summary stats
-  const counts = items.reduce((acc,i)=>{acc[i.source]=(acc[i.source]||0)+1;return acc},{});
-  const summaryHtml = `
-    <div class="review-summary">
-      <div class="summary-stat"><strong>${items.length}</strong> total</div>
-      ${Object.entries(counts).map(([k,n])=>`<div class="summary-stat"><strong>${n}</strong>${k}</div>`).join('')}
-      ${errors.length?`<div class="summary-stat" style="background:#f0e0e0;color:#a02020"><strong>${errors.length}</strong> load error${errors.length>1?'s':''}</div>`:''}
-    </div>
-  `;
+  // Enrich items with decision/date metadata + sort: pending oldest first; resolved at bottom
+  items.forEach(it=>{
+    if(!it.decision) it.decision = decisionForItem(it);
+    if(!it.created_date) it.created_date = pickDate(it) || '';
+  });
+  items.sort((a,b)=>{
+    // Resolved sink to bottom
+    const ar = (a.status==='resolved') ? 1 : 0;
+    const br = (b.status==='resolved') ? 1 : 0;
+    if(ar !== br) return ar - br;
+    // Within pending: oldest first; within resolved: most-recently-resolved first
+    if(a.status === 'resolved' && b.status === 'resolved'){
+      return (b.resolved_date||'').localeCompare(a.resolved_date||'');
+    }
+    return (a.created_date||'9999').localeCompare(b.created_date||'9999');
+  });
 
-  // Left pane shows source filter chips
+  // Counts
+  const counts = items.reduce((acc,i)=>{acc[i.source]=(acc[i.source]||0)+1;return acc},{});
+  const pendingCount = items.filter(i=>i.status!=='resolved').length;
   const sources = ['all',...Object.keys(counts)];
-  list.innerHTML = `
-    <div style="padding:14px 18px;border-bottom:1px solid var(--border)">
-      <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);font-weight:700;margin-bottom:6px">Filter by source</div>
+
+  // Left pane: filters + list rows
+  const filterBar = `
+    <div style="padding:12px 14px;border-bottom:1px solid var(--border);background:var(--surface)">
+      <div style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);font-weight:700;margin-bottom:6px">Filter by source</div>
       <div class="filter-bar" id="review-source-chips">
         ${sources.map(s=>`<button class="chip ${s==='all'?'active':''}" data-source="${s}" onclick="filterReviewSource('${s}')">${escapeHtml(s)}<span class="ct">${s==='all'?items.length:(counts[s]||0)}</span></button>`).join('')}
       </div>
       <label style="display:flex;align-items:center;gap:6px;margin-top:10px;font-size:11px;color:var(--muted);cursor:pointer">
         <input type="checkbox" id="show-resolved-toggle" ${REVIEW_SHOW_RESOLVED?'checked':''} onchange="toggleShowResolved()"> Show resolved
       </label>
-      <div style="margin-top:8px;font-size:11px;color:var(--muted)">Tip: click ✓ to mark done, 💬 to chat. Resolving one item with a note will scan for similar items to bulk-resolve.</div>
     </div>
   `;
-  document.getElementById('list-count').textContent = items.length;
+  list.innerHTML = filterBar + `<div id="review-rows"></div>`;
+  document.getElementById('list-count').textContent = `${pendingCount} open${REVIEW_SHOW_RESOLVED&&items.length>pendingCount?` · ${items.length-pendingCount} resolved`:''}`;
 
-  // Stash & render
+  // Right pane: empty state + onboarding tip
+  pane.innerHTML = `<div class="empty-state" style="padding:60px 20px">
+    <div class="icon">📋</div>
+    <div style="margin-bottom:6px">${pendingCount} open item${pendingCount===1?'':'s'} — oldest first.</div>
+    <div style="font-size:11px">Click any row to see the decision needed and resolve.</div>
+  </div>`;
+
   window._REVIEW_ITEMS = items;
-  renderReviewGrid('all', summaryHtml);
+  window._REVIEW_FILTER = 'all';
+  renderReviewRows('all');
+}
+
+function pickDate(it){
+  return it.created_date || it.queue_created_date || it.date;
+}
+
+function ageBadge(dateStr){
+  if(!dateStr) return '';
+  const d = new Date(dateStr);
+  if(isNaN(d)) return '';
+  const days = Math.floor((Date.now()-d.getTime())/86400000);
+  if(days <= 0) return 'today';
+  if(days === 1) return '1d';
+  if(days < 30) return days+'d';
+  if(days < 365) return Math.floor(days/30)+'mo';
+  return Math.floor(days/365)+'y';
+}
+
+// Turn an item into a single-sentence decision prompt with the action explicit
+function decisionForItem(it){
+  if(it._decision) return it._decision;
+  const q = it.queue_type || '';
+  const t = (it.title||'').toLowerCase();
+  // Specific patterns
+  if(q === 'notion-duplicate-project'){
+    return 'Delete the duplicate page in Notion (vault keeps the most-recently-edited one).';
+  }
+  if(q === 'new-project'){
+    return 'Assign PM, contributors, and confirm the client wikilink for this new project.';
+  }
+  if(q === 'project-health-alert'){
+    return 'Review the project — health flipped to STUCK or LATE.';
+  }
+  if(q === 'client-needs-decision'){
+    return 'Decide: keep as Client, move to Leads, or delete.';
+  }
+  if(q === 'client-needs-split'){
+    return 'Split this combined record into separate clients, or keep combined.';
+  }
+  if(q === 'contact-duplicate'){
+    return 'Merge into the canonical contact, or mark as a separate person.';
+  }
+  if(q === 'contact-needs-client-link'){
+    return 'Confirm which client this contact belongs to.';
+  }
+  if(q === 'contact-needs-detail'){
+    return 'Add the missing contact details (email / phone / role).';
+  }
+  if(q === 'contact-likely-junk'){
+    return 'Delete this junk contact, or keep with a note.';
+  }
+  if(q === 'team-status-update-needed'){
+    return 'Update this team member\'s status in Notion.';
+  }
+  if(q === 'privacy-cleanup'){
+    return 'Audit the privacy of these records.';
+  }
+  // Source-based fallbacks
+  if(it.source === 'qa') return 'Review this Help Doc candidate: approve → draft → publish, or reject.';
+  if(it.source === 'docs') return 'Review this internal SOP candidate: approve → draft → publish, or reject.';
+  if(it.source === 'error') return 'Investigate this workflow error and mark resolved.';
+  if(it.source === 'inbox') return 'Reprocess will route this meeting automatically — or open it to classify manually.';
+  if(it.source === 'policy') return 'A decision conflict needs a custom rule.';
+  if(it.source === 'project') return 'A project is flagged STUCK or LATE — review its status.';
+  return it.desc || '';
+}
+
+function renderReviewRows(src){
+  window._REVIEW_FILTER = src;
+  const all = (window._REVIEW_ITEMS||[]);
+  const items = all.filter(i=>src==='all'||i.source===src);
+  const wrap = document.getElementById('review-rows');
+  if(!wrap) return;
+  if(!items.length){
+    wrap.innerHTML = `<div class="empty-state" style="padding:40px 20px"><div class="icon">✓</div><div>Nothing to review in this category — nice.</div></div>`;
+    return;
+  }
+  wrap.innerHTML = items.map((it,idx)=>{
+    const origIdx = all.indexOf(it);
+    const age = ageBadge(it.created_date);
+    return `
+      <div class="review-row ${it.status==='resolved'?'resolved':''}" data-idx="${origIdx}" onclick="openReviewItem(${origIdx})">
+        <div class="row-top">
+          <span class="row-pill ${escapeAttr(it.source)}">${escapeHtml(it.source_label)}</span>
+          ${it.status==='resolved'?'<span style="color:#3a7d44;font-weight:700">✓ DONE</span>':''}
+          ${age?`<span class="row-age">${age}</span>`:''}
+        </div>
+        <div class="row-title">${escapeHtml(it.title)}</div>
+        <div class="row-decision">${escapeHtml(it.decision||it.desc||'')}</div>
+      </div>
+    `;
+  }).join('');
 }
 
 function filterReviewSource(src){
   document.querySelectorAll('#review-source-chips .chip').forEach(c=>c.classList.toggle('active',c.dataset.source===src));
-  // Summary header already built — re-render grid only
-  const summary = document.querySelector('#detail-pane .review-summary')?.outerHTML || '';
-  renderReviewGrid(src, summary);
+  renderReviewRows(src);
 }
 
-function renderReviewGrid(src, summaryHtml){
-  const items = (window._REVIEW_ITEMS||[]).filter(i=>src==='all'||i.source===src);
+function openReviewItem(idx){
+  const it = (window._REVIEW_ITEMS||[])[idx];
+  if(!it) return;
+  document.querySelectorAll('.review-row').forEach(r=>r.classList.toggle('active',r.dataset.idx==String(idx)));
   const pane = document.getElementById('detail-pane');
-  if(!items.length){
-    pane.innerHTML = `${summaryHtml}<div class="empty-state" style="padding:60px 20px"><div class="icon">✓</div><div>Nothing to review in this category — nice.</div></div>`;
-    return;
+  const ref = it.ref || {};
+  let sub = '';
+  // Pull sub-items from the raw queue record if available
+  if(ref.body){
+    try{
+      const raw = JSON.parse(ref.body);
+      if(Array.isArray(raw.items) && raw.items.length){
+        sub = `<div class="sub-items">
+          <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);font-weight:700;margin-bottom:6px">Details</div>
+          ${raw.items.map(si=>{
+            const link = si.context && si.context.startsWith('http') ? `<a class="sub-link" href="${escapeAttr(si.context)}" target="_blank" rel="noopener">${escapeHtml(si.context)}</a>` : (si.context?`<span style="color:var(--muted)">${escapeHtml(si.context)}</span>`:'');
+            return `<div class="sub-item"><strong>${escapeHtml(si.name||'')}</strong>${link}${si.email?` · ${escapeHtml(si.email)}`:''}${si.missing?` · <em>missing: ${escapeHtml(si.missing)}</em>`:''}</div>`;
+          }).join('')}
+        </div>`;
+      }
+    }catch(e){}
   }
+  const canMarkDone = it.source === 'people' && it.status !== 'resolved';
+  const isResolved = it.status === 'resolved';
+  const noteBlock = canMarkDone ? `
+    <div class="note-input-wrap">
+      <label>Resolution note <span style="font-weight:400;color:var(--muted)">(optional — used to find similar items)</span></label>
+      <textarea id="resolution-note" placeholder="How did you resolve it? e.g. 'Deleted duplicate in Notion', 'Confirmed contact belongs to Diabetes Digital'…"></textarea>
+      <div class="note-actions">
+        <button class="btn-done" onclick="markReviewDoneFromDetail(${idx})">✓ Mark Done</button>
+        <button class="btn-chat" onclick="reviewTileChat(${idx})">💬 Chat about this</button>
+      </div>
+    </div>
+  ` : '';
+  const resolvedBanner = isResolved ? `
+    <div class="resolution-note">
+      <strong>Resolved ${it.ref?.body?(()=>{try{return JSON.parse(it.ref.body).resolved_date||''}catch(e){return''}})():''}</strong>
+      ${(()=>{try{return escapeHtml(JSON.parse(it.ref.body).resolution||'(no note)')}catch(e){return''}})()}
+    </div>
+    <div class="action-row">
+      <button class="btn-reopen" onclick="markReviewReopen(${idx})">↺ Reopen</button>
+      <button class="btn-chat" onclick="reviewTileChat(${idx})">💬 Chat</button>
+    </div>
+  ` : '';
+  const openBtn = it.action_target ? `<button class="btn-open" onclick="reviewTileOpen(${idx})">Open in source</button>` : '';
   pane.innerHTML = `
-    ${summaryHtml}
-    <div class="review-grid">
-      ${items.map((it,idx)=>tileHtml(it,idx)).join('')}
+    <div class="review-detail">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+        <span class="row-pill ${escapeAttr(it.source)}">${escapeHtml(it.source_label)}</span>
+        ${it.created_date?`<span style="font-size:11px;color:var(--muted)">opened ${escapeHtml(it.created_date)} · ${ageBadge(it.created_date)}</span>`:''}
+      </div>
+      <h1>${escapeHtml(it.title)}</h1>
+      <div class="decision-box">
+        <div class="label">Decision needed</div>
+        <div class="text">${escapeHtml(it.decision||it.desc||'(no description)')}</div>
+      </div>
+      ${it.desc && it.desc !== it.decision ? `<div style="color:var(--text2);font-size:13px">${escapeHtml(it.desc)}</div>` : ''}
+      ${sub}
+      ${openBtn?`<div class="action-row">${openBtn}</div>`:''}
+      ${noteBlock}
+      ${resolvedBanner}
     </div>
   `;
+}
+
+async function markReviewDoneFromDetail(idx){
+  const it = (window._REVIEW_ITEMS||[])[idx];
+  if(!it) return;
+  const note = (document.getElementById('resolution-note')?.value || '').trim();
+  try{
+    await resolveQueueItem(it.queue_id, note);
+  }catch(e){alert('Failed: '+e.message);return}
+  // Look for similar pending items
+  const similar = findSimilarPending(it);
+  if(similar.length){
+    const titles = similar.slice(0,8).map(s=>'• '+s.title).join('\n') + (similar.length>8?`\n…and ${similar.length-8} more`:'');
+    const ok = confirm(`Found ${similar.length} similar pending item${similar.length>1?'s':''} (type: ${it.queue_type}):\n\n${titles}\n\nMark them all resolved with the same note?`);
+    if(ok){
+      for(const s of similar){
+        try{ await resolveQueueItem(s.queue_id, note + ' [bulk]'); } catch(e){}
+      }
+    }
+  }
+  await loadReviewAll();
+  refreshCounts();
 }
 
 function tileHtml(it,idx){
