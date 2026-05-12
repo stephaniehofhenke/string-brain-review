@@ -207,12 +207,28 @@ a.broken-link{color:var(--red);text-decoration:line-through}
 .review-detail .sub-items .sub-item strong{display:block;margin-bottom:2px}
 .review-detail .sub-items .sub-item .sub-link{font-size:11px;color:var(--teal);word-break:break-all}
 .review-detail .action-row{display:flex;flex-wrap:wrap;gap:8px;margin-top:20px;padding-top:16px;border-top:1px solid var(--border)}
-.review-detail .action-row button{font-size:13px;padding:8px 16px;border-radius:6px;font-weight:600}
+.review-detail .action-row button{font-size:13px;padding:8px 16px;border-radius:6px;font-weight:600;border:1px solid transparent}
 .review-detail .action-row .btn-done{background:#3a7d44;color:#fff}
 .review-detail .action-row .btn-done:hover{opacity:0.9}
 .review-detail .action-row .btn-chat{background:var(--teal);color:#fff}
 .review-detail .action-row .btn-open{background:var(--surface2);color:var(--text)}
 .review-detail .action-row .btn-reopen{background:var(--surface2);color:var(--muted)}
+
+/* Decision choices */
+.decision-choices{margin-top:14px}
+.decision-choices .label{font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);font-weight:700;margin-bottom:8px}
+.decision-choices .choice-grid{display:flex;flex-direction:column;gap:6px}
+.choice-btn{display:flex;align-items:center;justify-content:space-between;text-align:left;padding:11px 14px;background:var(--surface);border:1px solid var(--border);border-radius:6px;cursor:pointer;font-size:13px;color:var(--text);transition:all 0.1s}
+.choice-btn:hover{border-color:var(--teal);background:var(--surface2)}
+.choice-btn .choice-label{font-weight:600}
+.choice-btn .choice-hint{font-size:11px;color:var(--muted);font-weight:400;margin-left:10px}
+.choice-btn.primary{background:var(--teal);color:#fff;border-color:var(--teal)}
+.choice-btn.primary .choice-hint{color:rgba(255,255,255,0.7)}
+.choice-btn.danger{background:#fff;color:var(--red);border-color:#f0d0d0}
+.choice-btn.danger:hover{background:#fff0f0}
+.choice-busy{opacity:0.6;pointer-events:none}
+.choice-result{margin-top:10px;padding:10px 12px;background:#dcf0e0;border-radius:6px;font-size:12px;color:#2c5e36}
+.choice-result.err{background:#f0e0e0;color:#a02020}
 .review-detail .resolution-note{margin-top:12px;padding:10px 12px;background:#dcf0e0;border-radius:6px;font-size:12px;color:#2c5e36}
 .review-detail .resolution-note strong{display:block;margin-bottom:3px}
 .note-input-wrap{margin-top:14px;padding:12px 14px;background:var(--surface2);border-radius:6px}
@@ -1356,12 +1372,27 @@ function openReviewItem(idx){
   }
   const canMarkDone = it.source === 'people' && it.status !== 'resolved';
   const isResolved = it.status === 'resolved';
+  // Decision choices block — primary action UX
+  const choices = canMarkDone ? getChoicesForItem(it) : [];
+  const choicesBlock = choices.length ? `
+    <div class="decision-choices" id="choice-container">
+      <div class="label">Choose an action</div>
+      <div class="choice-grid">
+        ${choices.map(c=>`
+          <button class="choice-btn ${c.style||''}" onclick='runChoice(${idx}, ${JSON.stringify(c.id)})'>
+            <span class="choice-label">${escapeHtml(c.label)}</span>
+            ${c.hint?`<span class="choice-hint">${escapeHtml(c.hint)}</span>`:''}
+          </button>
+        `).join('')}
+      </div>
+    </div>
+  ` : '';
   const noteBlock = canMarkDone ? `
     <div class="note-input-wrap">
-      <label>Resolution note <span style="font-weight:400;color:var(--muted)">(optional — used to find similar items)</span></label>
-      <textarea id="resolution-note" placeholder="How did you resolve it? e.g. 'Deleted duplicate in Notion', 'Confirmed contact belongs to Diabetes Digital'…"></textarea>
+      <label>Or write a custom resolution note</label>
+      <textarea id="resolution-note" placeholder="If none of the choices above fit, describe how you resolved it here…"></textarea>
       <div class="note-actions">
-        <button class="btn-done" onclick="markReviewDoneFromDetail(${idx})">✓ Mark Done</button>
+        <button class="btn-done" onclick="markReviewDoneFromDetail(${idx})">✓ Mark Done with note</button>
         <button class="btn-chat" onclick="reviewTileChat(${idx})">💬 Chat about this</button>
       </div>
     </div>
@@ -1390,11 +1421,234 @@ function openReviewItem(idx){
       </div>
       ${it.desc && it.desc !== it.decision ? `<div style="color:var(--text2);font-size:13px">${escapeHtml(it.desc)}</div>` : ''}
       ${sub}
+      ${choicesBlock}
       ${openBtn?`<div class="action-row">${openBtn}</div>`:''}
       ${noteBlock}
       ${resolvedBanner}
     </div>
   `;
+}
+
+// ───────────── Decision choices per item type ─────────────
+// Each choice: {id, label, hint, style ('primary'|'danger'|''), run(item) → {ok, message}, autoResolve, resolveNote}
+function getChoicesForItem(it){
+  const q = it.queue_type || '';
+  const raw = parseRawQueueItem(it);
+
+  // notion-duplicate-project: duplicate page in Notion
+  if(q === 'notion-duplicate-project'){
+    const dropUrl = (raw.items||[]).find(s=>(s.context||'').startsWith('http') && /Duplicate to delete/i.test(s.name||''))?.context;
+    const keptUrl = (raw.items||[]).find(s=>(s.context||'').startsWith('http') && /Kept/i.test(s.name||''))?.context;
+    const teamworkId = (raw.description||'').match(/ID (\d+)/)?.[1];
+    return [
+      {id:'open-dup', label:'Open duplicate in Notion to delete', hint:'opens in new tab', style:'primary',
+        run: async ()=>{ if(dropUrl){window.open(dropUrl,'_blank')}; return {ok:true, message:'Opened duplicate. Delete the page in Notion, then mark done.'} },
+        autoResolve:false},
+      {id:'view-kept', label:'View kept project in Notion', hint:'opens in new tab',
+        run: async ()=>{ if(keptUrl){window.open(keptUrl,'_blank')}; return {ok:true, message:'Opened the kept project.'} },
+        autoResolve:false},
+      {id:'mark-resolved', label:'Mark resolved — I deleted it in Notion', hint:'closes this issue', style:'',
+        run: async ()=>({ok:true, message:'Marked resolved.'}),
+        autoResolve:true, resolveNote:'Deleted duplicate in Notion'},
+      {id:'defer', label:'Skip for now', hint:'closes with deferred note', style:'',
+        run: async ()=>({ok:true, message:'Deferred.'}),
+        autoResolve:true, resolveNote:'Deferred — clean up later'},
+    ];
+  }
+
+  // new-project: a project synced from Notion needs PM/contributors
+  if(q === 'new-project'){
+    const name = (raw.items?.[0]?.name) || it.title.replace(/^New project from Notion:\s*/i,'');
+    return [
+      {id:'open-vault', label:'Open project record', hint:'edit PM, contributors, etc.', style:'primary',
+        run: async ()=>{ location.hash = `#/Projects/${encodeURIComponent(name)}`; return {ok:true} },
+        autoResolve:false},
+      {id:'open-notion', label:'Open in Notion', hint:'opens new tab',
+        run: async ()=>{ const url = raw.items?.[0]?.context?.match(/https:\/\/[^\s]+/)?.[0]; if(url){window.open(url,'_blank')} return {ok:true} },
+        autoResolve:false},
+      {id:'mark-reviewed', label:'Mark reviewed', style:'',
+        run: async ()=>({ok:true}), autoResolve:true, resolveNote:'PM + contributors assigned'},
+    ];
+  }
+
+  // project-health-alert
+  if(q === 'project-health-alert'){
+    const name = it.title.split(':')[0];
+    return [
+      {id:'open-project', label:'Open project record', hint:'review status & notes', style:'primary',
+        run: async ()=>{ location.hash = `#/Projects/${encodeURIComponent(name)}`; return {ok:true} },
+        autoResolve:false},
+      {id:'ack', label:'Acknowledge — I\'ll handle outside the dashboard', style:'',
+        run: async ()=>({ok:true}), autoResolve:true, resolveNote:'Acknowledged, handling separately'},
+    ];
+  }
+
+  // contact-duplicate
+  if(q === 'contact-duplicate'){
+    const names = (raw.items||[]).map(s=>s.name).filter(Boolean);
+    return [
+      {id:'merge', label:'Merge into canonical (Claude executes)', hint:'queues a merge action', style:'primary',
+        run: async ()=>queueActionRequest({action:'merge-contacts', item:raw, decided_by:'Stephanie'}),
+        autoResolve:true, resolveNote:'Queued merge for Claude to execute'},
+      ...names.slice(0,2).map(n=>({id:'open-'+n, label:`Open '${n}'`, hint:'review the record',
+        run: async ()=>{ location.hash = `#/Contacts/${encodeURIComponent(n)}`; return {ok:true} },
+        autoResolve:false})),
+      {id:'keep-both', label:'Keep both — different people', style:'',
+        run: async ()=>({ok:true}), autoResolve:true, resolveNote:'Confirmed as separate people'},
+    ];
+  }
+
+  // contact-needs-client-link
+  if(q === 'contact-needs-client-link'){
+    return [
+      {id:'open', label:'Open contact to edit', hint:'add associated_accounts wikilink', style:'primary',
+        run: async ()=>{ const name = raw.items?.[0]?.name; if(name) location.hash = `#/Contacts/${encodeURIComponent(name)}`; return {ok:true} },
+        autoResolve:false},
+      {id:'mark-orphan', label:'Mark as orphan', hint:'no STRING client association',
+        run: async ()=>({ok:true}), autoResolve:true, resolveNote:'Confirmed no client association'},
+      {id:'delete', label:'Delete contact', hint:'not a real contact', style:'danger',
+        run: async ()=>queueActionRequest({action:'delete-contact', item:raw, decided_by:'Stephanie'}),
+        autoResolve:true, resolveNote:'Queued delete for Claude to execute'},
+    ];
+  }
+
+  // contact-needs-detail
+  if(q === 'contact-needs-detail'){
+    return [
+      {id:'open', label:'Open contact to edit', hint:'fill in missing fields', style:'primary',
+        run: async ()=>{ const name = raw.items?.[0]?.name; if(name) location.hash = `#/Contacts/${encodeURIComponent(name)}`; return {ok:true} },
+        autoResolve:false},
+      {id:'mark', label:'Mark complete (already in Notion)', style:'',
+        run: async ()=>({ok:true}), autoResolve:true, resolveNote:'Completed in Notion'},
+    ];
+  }
+
+  // contact-likely-junk
+  if(q === 'contact-likely-junk'){
+    return [
+      {id:'delete', label:'Delete this contact', style:'danger',
+        run: async ()=>queueActionRequest({action:'delete-contact', item:raw, decided_by:'Stephanie'}),
+        autoResolve:true, resolveNote:'Queued delete for Claude'},
+      {id:'keep', label:'Keep with a note', style:'',
+        run: async ()=>({ok:true}), autoResolve:true, resolveNote:'Kept — legitimate contact'},
+    ];
+  }
+
+  // client-needs-decision
+  if(q === 'client-needs-decision'){
+    const name = raw.items?.[0]?.name || it.title;
+    return [
+      {id:'keep', label:'Keep as Client', style:'primary',
+        run: async ()=>queueActionRequest({action:'confirm-client', item:raw, decided_by:'Stephanie'}),
+        autoResolve:true, resolveNote:'Confirmed as Client'},
+      {id:'to-lead', label:'Move to Leads', hint:'reclassify',
+        run: async ()=>queueActionRequest({action:'move-to-leads', item:raw, decided_by:'Stephanie'}),
+        autoResolve:true, resolveNote:'Queued move to Leads'},
+      {id:'open', label:'Open record', hint:'review first',
+        run: async ()=>{ location.hash = `#/Clients/${encodeURIComponent(name)}`; return {ok:true} },
+        autoResolve:false},
+      {id:'delete', label:'Delete record', style:'danger',
+        run: async ()=>queueActionRequest({action:'delete-client', item:raw, decided_by:'Stephanie'}),
+        autoResolve:true, resolveNote:'Queued delete for Claude'},
+    ];
+  }
+
+  // client-needs-split
+  if(q === 'client-needs-split'){
+    return [
+      {id:'split', label:'Split into separate clients', hint:'Claude executes', style:'primary',
+        run: async ()=>queueActionRequest({action:'split-client', item:raw, decided_by:'Stephanie'}),
+        autoResolve:true, resolveNote:'Queued split for Claude'},
+      {id:'keep', label:'Keep combined', style:'',
+        run: async ()=>({ok:true}), autoResolve:true, resolveNote:'Confirmed combined record'},
+    ];
+  }
+
+  // Default: just generic actions
+  return [
+    {id:'open-source', label:'Open source', hint:'jump to the record/file',
+      run: async ()=>{ reviewTileOpen((window._REVIEW_ITEMS||[]).indexOf(it)); return {ok:true} },
+      autoResolve:false},
+    {id:'mark-resolved', label:'Mark resolved', style:'',
+      run: async ()=>({ok:true}), autoResolve:true, resolveNote:''},
+  ];
+}
+
+function parseRawQueueItem(it){
+  try{ return JSON.parse(it.ref?.body||'{}') }catch(e){ return {} }
+}
+
+// Persist an action request to a JSON file in the vault; nightly sync / Claude session picks them up
+async function queueActionRequest(req){
+  const path = 'Review/action-requests.json';
+  let queue = {requests:[]};
+  let sha = null;
+  try{
+    const f = await ghFile(path);
+    queue = JSON.parse(f.content);
+    if(!queue.requests) queue.requests = [];
+    sha = f.sha;
+  }catch(e){/* new file */}
+  queue.requests.push({
+    ...req,
+    requested_date: new Date().toISOString(),
+    status: 'pending',
+  });
+  try{
+    await ghPutFile(path, JSON.stringify(queue,null,2), sha, `Queue action: ${req.action}`);
+    return {ok:true, message:`Queued '${req.action}' for Claude to execute next session.`};
+  }catch(e){
+    return {ok:false, message:'Failed to queue: '+e.message};
+  }
+}
+
+async function runChoice(idx, choiceId){
+  const it = (window._REVIEW_ITEMS||[])[idx];
+  if(!it) return;
+  const choices = getChoicesForItem(it);
+  const choice = choices.find(c=>c.id===choiceId);
+  if(!choice) return;
+  const container = document.getElementById('choice-container');
+  if(container) container.classList.add('choice-busy');
+  let result;
+  try{
+    result = await choice.run(it);
+  }catch(e){
+    result = {ok:false, message:e.message};
+  }
+  // Show inline result
+  if(container){
+    const out = document.createElement('div');
+    out.className = 'choice-result' + (result.ok ? '' : ' err');
+    out.textContent = result.message || (result.ok ? 'Done.' : 'Failed.');
+    container.appendChild(out);
+    container.classList.remove('choice-busy');
+  }
+  // Auto-resolve if the choice says so
+  if(result.ok && choice.autoResolve && it.queue_id){
+    try{
+      await resolveQueueItem(it.queue_id, choice.resolveNote || result.message || choice.label);
+      // Find similar pending
+      const similar = findSimilarPending(it);
+      if(similar.length){
+        const titles = similar.slice(0,8).map(s=>'• '+s.title).join('\n') + (similar.length>8?`\n…and ${similar.length-8} more`:'');
+        const ok = confirm(`Apply '${choice.label}' to ${similar.length} similar pending item${similar.length>1?'s':''}?\n\n${titles}`);
+        if(ok){
+          for(const s of similar){
+            try{
+              await choice.run(s);
+              await resolveQueueItem(s.queue_id, (choice.resolveNote || choice.label) + ' [bulk]');
+            }catch(e){/* skip individual failures */}
+          }
+        }
+      }
+      // Reload list
+      await loadReviewAll();
+      refreshCounts();
+    }catch(e){
+      alert('Resolve failed: '+e.message);
+    }
+  }
 }
 
 async function markReviewDoneFromDetail(idx){
