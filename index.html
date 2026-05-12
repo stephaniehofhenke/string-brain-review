@@ -420,6 +420,7 @@ let FILTER_STATE = {};      // view → { key: value }
 let NAV_HISTORY = [];       // stack of {view, recordName}
 let SECTION_COLLAPSED = {}; // section-key → bool
 let TEAM_LAST_CONTACT = null; // loaded from _scripts/data/team-last-contact.json
+let NOTION_LOOKUP = null; // {clients:{name:url}, contacts:{name:url}, projects:{name:url}, leads:{name:url}, team:{name:url}}
 
 // ───────────── Bootstrap ─────────────
 function saveSetup(){
@@ -717,7 +718,18 @@ async function switchView(v){
   if(cfg.type==='entity'){await loadEntityList(v)}
   else if(cfg.type==='entity-flat'){await loadEntityFlat(v)}
   else if(cfg.type==='review-all'){await loadReviewAll()}
-  else if(cfg.type==='people-queue'){await loadPeopleQueue()}
+  else if(cfg.type==='people-queue'){
+    // Redirect to unified Review filtered to people-domain (clients/contacts/team/etc.)
+    CURRENT_VIEW = 'review-all';
+    document.querySelectorAll('.nav-item').forEach(el=>el.classList.toggle('active',el.dataset.view==='review-all'));
+    document.getElementById('list-title').innerHTML = `People review queue <small id="list-count"></small>`;
+    await loadReviewAll();
+    // Pre-filter to people-related domains by default
+    setTimeout(()=>{
+      // No single 'people' domain — the items map to clients/contacts/team/etc.
+      // Just leave 'all' active; user can chip-filter further.
+    }, 100);
+  }
   else if(cfg.type==='help-docs'){await loadFolderList('Help Docs/candidates')}
   else if(cfg.type==='documentation'){await loadFolderList('Documentation/candidates')}
   else if(cfg.type==='errors'){await loadFolderList('Review/errors')}
@@ -1120,6 +1132,9 @@ async function loadReviewAll(){
   list.innerHTML = '<div class="loading"><span class="spinner"></span>&nbsp; Aggregating…</div>';
   pane.innerHTML = `<div class="empty-state"><div class="icon">📋</div><div>Loading review items from every source…</div></div>`;
 
+  // Ensure Notion lookup index is loaded once per session
+  if(!NOTION_LOOKUP) await loadNotionLookup();
+
   const items = [];
   const errors = [];
 
@@ -1294,6 +1309,66 @@ async function loadReviewAll(){
   renderReviewRows('all');
 }
 
+// Build a name → notion-url index from the snapshots committed to the vault.
+async function loadNotionLookup(){
+  const lookup = {clients:{}, contacts:{}, projects:{}, leads:{}, team:{}};
+  // Projects
+  try{
+    const f = await ghFile('_scripts/data/notion-projects-snapshot.json');
+    const d = JSON.parse(f.content);
+    (d.projects||[]).forEach(p=>{ if(p.Name && p.url) lookup.projects[p.Name.toLowerCase().trim()] = p.url });
+  }catch(e){}
+  // Clients
+  try{
+    const f = await ghFile('_scripts/data/notion-clients-snapshot.json');
+    const d = JSON.parse(f.content);
+    (d.clients||[]).forEach(c=>{
+      const url = c.notion_url || (c.client_key ? `https://www.notion.so/${c.client_key.replace(/-/g,'')}` : null);
+      if(c.name && url) lookup.clients[c.name.toLowerCase().trim()] = url;
+    });
+  }catch(e){}
+  // Contacts
+  try{
+    const f = await ghFile('_scripts/data/notion-contacts-snapshot.json');
+    const d = JSON.parse(f.content);
+    (d.contacts||[]).forEach(c=>{
+      const name = c['Contact Name'] || c.name;
+      const url = c.url || c.notion_url;
+      if(name && url) lookup.contacts[name.toLowerCase().trim()] = url;
+    });
+  }catch(e){}
+  NOTION_LOOKUP = lookup;
+}
+
+function notionUrlFor(domain, name){
+  if(!NOTION_LOOKUP || !name) return null;
+  const key = String(name).toLowerCase().trim();
+  // Try the exact domain first, then fall back to others
+  const bucket = NOTION_LOOKUP[domain];
+  if(bucket && bucket[key]) return bucket[key];
+  for(const d of Object.values(NOTION_LOOKUP)){
+    if(d[key]) return d[key];
+  }
+  return null;
+}
+
+// Find a Notion URL for the given review item by inspecting its raw body
+function notionUrlForItem(it){
+  const raw = parseRawQueueItem(it);
+  // 1. URL already in items[].context (used by notion-duplicate-project)
+  for(const si of (raw.items||[])){
+    const ctx = si.context || '';
+    const m = ctx.match(/https?:\/\/(?:www\.)?notion\.so\/[^\s\)]+/);
+    if(m) return m[0];
+  }
+  // 2. URL in description
+  const dm = (raw.description||'').match(/https?:\/\/(?:www\.)?notion\.so\/[^\s\)]+/);
+  if(dm) return dm[0];
+  // 3. Look up by name + domain
+  const candidateName = raw.items?.[0]?.name || (raw.title||'').replace(/^[^:]*:\s*/,'').trim();
+  return notionUrlFor(it.domain, candidateName);
+}
+
 // Classify an item to a domain (clients/contacts/projects/etc.) regardless of its file source
 function domainForItem(it){
   const q = (it.queue_type||'').toLowerCase();
@@ -1400,10 +1475,12 @@ function renderReviewRows(domain){
     const age = ageBadge(it.created_date);
     const pillClass = DOMAIN_PILL_CLASS[it.domain] || 'people';
     const pillLabel = DOMAIN_LABEL_SHORT[it.domain] || it.domain;
+    const hasNotion = !!notionUrlForItem(it);
     return `
       <div class="review-row ${it.status==='resolved'?'resolved':''}" data-idx="${origIdx}" onclick="openReviewItem(${origIdx})">
         <div class="row-top">
           <span class="row-pill ${pillClass}">${escapeHtml(pillLabel)}</span>
+          ${hasNotion?'<span title="Has Notion link" style="font-size:11px">🟢</span>':''}
           ${it.status==='resolved'?'<span style="color:#3a7d44;font-weight:700">✓ DONE</span>':''}
           ${age?`<span class="row-age">${age}</span>`:''}
         </div>
@@ -1481,6 +1558,8 @@ function openReviewItem(idx){
     </div>
   ` : '';
   const openBtn = it.action_target ? `<button class="btn-open" onclick="reviewTileOpen(${idx})">Open in source</button>` : '';
+  const notionUrl = notionUrlForItem(it);
+  const notionBtn = notionUrl ? `<a class="btn-open" style="display:inline-flex;align-items:center;gap:5px;padding:8px 16px;border-radius:6px;background:var(--surface2);color:var(--text);text-decoration:none;font-size:13px;font-weight:600" href="${escapeAttr(notionUrl)}" target="_blank" rel="noopener">🟢 Open in Notion</a>` : '';
   pane.innerHTML = `
     <div class="review-detail">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
@@ -1495,7 +1574,7 @@ function openReviewItem(idx){
       ${it.desc && it.desc !== it.decision ? `<div style="color:var(--text2);font-size:13px">${escapeHtml(it.desc)}</div>` : ''}
       ${sub}
       ${choicesBlock}
-      ${openBtn?`<div class="action-row">${openBtn}</div>`:''}
+      ${(openBtn||notionBtn)?`<div class="action-row">${notionBtn}${openBtn}</div>`:''}
       ${noteBlock}
       ${resolvedBanner}
     </div>
