@@ -296,6 +296,7 @@ let CACHE = {};             // view → records
 let FILTER_STATE = {};      // view → { key: value }
 let NAV_HISTORY = [];       // stack of {view, recordName}
 let SECTION_COLLAPSED = {}; // section-key → bool
+let TEAM_LAST_CONTACT = null; // loaded from _scripts/data/team-last-contact.json
 
 // ───────────── Bootstrap ─────────────
 function saveSetup(){
@@ -442,6 +443,13 @@ async function loadEntityList(folder){
       name: sf.name, path:`${folder}/${sf.name}/${sf.name}.md`, folder, loaded:false
     }));
     CACHE[folder] = CURRENT_RECORDS;
+    // For Team view, load the last-contact index
+    if(folder==='Team' && !TEAM_LAST_CONTACT){
+      try{
+        const f = await ghFile('_scripts/data/team-last-contact.json');
+        TEAM_LAST_CONTACT = JSON.parse(f.content);
+      }catch(e){console.warn('team index missing',e)}
+    }
     renderList();
     // Lazy-prefetch frontmatter for filter-aware views (Clients, Leads, Contacts, Team, Projects)
     if(['Clients','Leads','Contacts','Team','Projects'].includes(folder)){
@@ -616,7 +624,22 @@ function renderList(){
 function listItemHtml(r){
   const stage = r.frontmatter?.stage;
   const status = r.frontmatter?.status;
-  const sub = stage || status ? `<div class="list-item-sub">${[stage,status].filter(Boolean).join(' · ')}</div>` : '';
+  let sub = stage || status ? `<div class="list-item-sub">${[stage,status].filter(Boolean).join(' · ')}</div>` : '';
+
+  // Team view: show last-contact summary instead
+  if(CURRENT_VIEW==='Team' && TEAM_LAST_CONTACT?.team?.[r.name]){
+    const t = TEAM_LAST_CONTACT.team[r.name];
+    if(t.last_meeting){
+      const lm = t.last_meeting;
+      const wlPath = lm.path.replace(/\.md$/,'');
+      sub = `<div class="list-item-sub">
+        Last contact: <strong>${escapeHtml(lm.date)}</strong> · ${escapeHtml(lm.client||'')}
+        <a href="#" class="wikilink" data-target="${encodeURIComponent(wlPath)}" onclick="event.stopPropagation();navigateWikilink('${wlPath.replace(/'/g,"\\'")}')">→ view</a>
+        <div style="font-size:10px;color:var(--muted);margin-top:2px">${t.total_meetings} meetings tracked</div>
+      </div>`;
+    }
+  }
+
   return `
     <div class="list-item" data-name="${escapeAttr(r.name)}" onclick="selectRecord('${r.name.replace(/'/g,"\\'")}')">
       <div class="list-item-title">${escapeHtml(r.name)}</div>
