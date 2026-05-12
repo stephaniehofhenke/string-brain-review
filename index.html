@@ -2047,8 +2047,25 @@ const TOOLS = [
   },
   {
     name: 'archive_notion_page',
-    description: 'Archive (move to trash) a Notion page by its UUID. Reversible.',
+    description: 'Archive (move to trash) a Notion page by its UUID. Reversible. When browser CORS blocks the direct call, the tool auto-queues an action-request to Review/action-requests.json that the nightly sync executes server-side.',
     input_schema: { type:'object', properties:{ page_id:{type:'string'} }, required:['page_id']}
+  },
+  {
+    name: 'update_notion_page',
+    description: 'Update properties on a Notion page (e.g. change Status, set a field). Queues an action-request to Review/action-requests.json — the nightly sync executes the PATCH server-side via Notion REST API. Use this for any non-archive Notion mutation.',
+    input_schema: { type:'object', properties:{
+      page_id:{type:'string', description:'Notion page UUID (with or without dashes)'},
+      properties:{type:'object', description:'Notion property updates per the REST API shape, e.g. {"Status":{"select":{"name":"Inactive"}}, "Phone":{"phone_number":"555-1212"}}'},
+      reason:{type:'string', description:'one-line description of why this update'}
+    }, required:['page_id','properties']}
+  },
+  {
+    name: 'notion_lookup',
+    description: 'Look up a Notion page by name from the local Notion snapshot files (notion-clients-snapshot.json, notion-contacts-snapshot.json, notion-projects-snapshot.json). Returns name + Notion page UUID + URL. Use this to resolve a name to a page_id before update_notion_page or archive_notion_page.',
+    input_schema: { type:'object', properties:{
+      name:{type:'string'},
+      kind:{type:'string', enum:['client','contact','project','any'], description:'which snapshot to search; "any" = all three'}
+    }, required:['name']}
   },
   {
     name: 'finish',
@@ -2114,6 +2131,45 @@ async function runTool(name, input){
       }
       return {ok:false, error:`Notion direct call failed (${e.message}) and queuing also failed (${queueRes.message||'unknown'}).`};
     }
+  }
+  if(name === 'update_notion_page'){
+    const queueRes = await queueActionRequest({
+      action:'update-notion-page',
+      page_id: input.page_id,
+      properties: input.properties || {},
+      reason: input.reason || '',
+      decided_by:'chat',
+    });
+    if(queueRes.ok){
+      return {ok:true, queued_for_server:true, message:`Queued Notion page update (will run on next sync at 02:15, or run \`python3 _scripts/nightly_projects_sync.py\` to execute now).`};
+    }
+    return {ok:false, error: queueRes.message || 'queue failed'};
+  }
+  if(name === 'notion_lookup'){
+    const results = [];
+    const sources = input.kind === 'client' ? ['_scripts/data/notion-clients-snapshot.json']
+                  : input.kind === 'contact' ? ['_scripts/data/notion-contacts-snapshot.json']
+                  : input.kind === 'project' ? ['_scripts/data/notion-projects-snapshot.json']
+                  : ['_scripts/data/notion-clients-snapshot.json','_scripts/data/notion-contacts-snapshot.json','_scripts/data/notion-projects-snapshot.json'];
+    const q = (input.name||'').toLowerCase().trim();
+    for(const path of sources){
+      try{
+        const f = await ghFile(path);
+        const d = JSON.parse(f.content);
+        const list = d.clients || d.contacts || d.projects || [];
+        for(const e of list){
+          const n = (e.name || e['Contact Name'] || e.Name || '').toString();
+          if(n.toLowerCase().includes(q)){
+            const url = e.url || e.notion_url || (e.client_key ? `https://www.notion.so/${(e.client_key||'').replace(/-/g,'')}` : null);
+            const id = url ? (url.match(/([0-9a-f]{32})/i)||[])[1] : null;
+            results.push({name:n, url, page_id:id, source:path.split('-')[1]});
+            if(results.length >= 8) break;
+          }
+        }
+      }catch(e){/* skip missing snapshot */}
+      if(results.length >= 8) break;
+    }
+    return {ok:true, results};
   }
   if(name === 'finish'){
     return {ok:true, finished:true, summary: input.summary};
@@ -2862,14 +2918,19 @@ async function sendChat(){
 
   const systemPrompt = `You are an assistant embedded in STRING Marketing's "STRING Brain" — a Claude-powered second brain on a GitHub-backed Obsidian vault (repo "${REPO}"). Files are markdown with YAML frontmatter. The vault holds Clients, Contacts, Leads, Team, Projects, Systems, Services, plus meeting notes and tickets.
 
-You have TOOLS to actually edit the vault and Notion. Use them when the user asks for changes — don't refuse and don't ask for permission, just do it (changes go through git so they're reversible):
+You have EXACTLY these 9 tools — no others exist. Do NOT mention or refer to any tool name not in this list. Use them when the user asks for changes — don't refuse, don't ask for permission, just do it. Every vault change goes through git, so everything is reversible:
+
   - read_file(path) — read any vault file (returns content + sha)
   - write_file(path, content, sha, message) — create/overwrite a file (commits)
   - delete_file(path, sha, message) — delete a file (commits)
   - list_directory(path) — list a vault folder
   - search_code(query) — GitHub code search for finding backlinks etc.
-  - archive_notion_page(page_id) — archive a Notion page. When called from this browser, the tool first tries a direct Notion API call; if that fails (Notion blocks browser CORS), the tool automatically queues an action-request to Review/action-requests.json that runs on the next nightly sync. Read the tool result's "executed_directly" and "queued_for_server" flags to know which happened.
+  - notion_lookup(name, kind) — find a Notion page UUID by name; search the local clients/contacts/projects snapshots. Use this FIRST when the user asks for a Notion edit but you don't know the page_id.
+  - archive_notion_page(page_id) — archive (trash) a Notion page. Browser CORS blocks the direct call; the tool auto-queues an action-request that the nightly sync executes server-side.
+  - update_notion_page(page_id, properties, reason) — update Notion page properties (Status, custom fields, etc.). Always queues an action-request; runs on next nightly sync.
   - finish(summary) — call when the task is done
+
+**You DO NOT have:** notion_search, notion_append_block, notion_query_database, notion_create_page, or any other Notion-specific tool. If you need something Notion can do that isn't in the 9 tools above, queue an action-request via write_file to Review/action-requests.json with action: "custom" and a description of what's needed.
 
 **CRITICAL HONESTY RULES — read carefully:**
 1. NEVER claim a change happened unless a tool returned ok:true for that exact change.
