@@ -454,17 +454,41 @@ let NOTION_LOOKUP = null; // {clients:{name:url}, contacts:{name:url}, projects:
 
 // ───────────── Bootstrap ─────────────
 function saveSetup(){
-  const gh=document.getElementById('setup-gh').value.trim();
-  const ak=document.getElementById('setup-anthropic').value.trim();
-  const nk=(document.getElementById('setup-notion')?.value||'').trim();
-  if(!gh||!ak){alert('GitHub + Claude tokens required');return}
-  localStorage.setItem('gh_token',gh);
-  localStorage.setItem('anthropic_key',ak);
-  if(nk) localStorage.setItem('notion_key',nk);
-  GH_TOKEN=gh;ANTHROPIC_KEY=ak;NOTION_KEY=nk;
-  document.getElementById('setup').style.display='none';
-  init();
+  try{
+    console.log('saveSetup invoked');
+    const gh=document.getElementById('setup-gh').value.trim();
+    const ak=document.getElementById('setup-anthropic').value.trim();
+    const notionEl = document.getElementById('setup-notion');
+    const nk = (notionEl && notionEl.value ? notionEl.value : '').trim();
+    if(!gh||!ak){alert('GitHub + Claude tokens required');return}
+    try{
+      localStorage.setItem('gh_token',gh);
+      localStorage.setItem('anthropic_key',ak);
+      if(nk) localStorage.setItem('notion_key',nk);
+    }catch(e){
+      alert('Could not save tokens to localStorage (private browsing mode?). The dashboard will still load for this session.\n\nError: '+e.message);
+    }
+    GH_TOKEN=gh;ANTHROPIC_KEY=ak;NOTION_KEY=nk;
+    document.getElementById('setup').style.display='none';
+    init();
+  }catch(e){
+    console.error('saveSetup failed:', e);
+    alert('Setup failed: '+e.message+'\n\nCheck the browser console for details (Cmd+Opt+J on Chrome, Cmd+Opt+I → Console on Safari).');
+  }
 }
+
+// Belt-and-suspenders: also bind the Continue button via addEventListener after DOM loads
+// (handles edge cases where inline onclick doesn't fire)
+window.addEventListener('DOMContentLoaded', ()=>{
+  const btn = document.querySelector('#setup .btn');
+  if(btn){
+    btn.addEventListener('click', saveSetup);
+    // Also wire Enter key in any setup field
+    document.querySelectorAll('#setup input').forEach(inp=>{
+      inp.addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); saveSetup() } });
+    });
+  }
+});
 
 function init(){
   if(!GH_TOKEN||!ANTHROPIC_KEY){return}
@@ -2917,10 +2941,16 @@ function escapeHtml(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'
 function escapeAttr(s){return String(s||'').replace(/"/g,'&quot;').replace(/</g,'&lt;')}
 
 // ───────────── Boot ─────────────
-if(GH_TOKEN && ANTHROPIC_KEY){
-  init();
-}else{
-  document.getElementById('setup').style.display='flex';
+try{
+  if(GH_TOKEN && ANTHROPIC_KEY){
+    init();
+  }else{
+    document.getElementById('setup').style.display='flex';
+  }
+}catch(e){
+  console.error('Boot failed:', e);
+  document.body.insertAdjacentHTML('afterbegin',
+    `<div style="background:#a02020;color:#fff;padding:14px 20px;font-family:monospace;font-size:13px;position:fixed;top:0;left:0;right:0;z-index:99999">Boot error: ${(e&&e.message)||e}. Open browser console for details.</div>`);
 }
 </script>
 </body>
