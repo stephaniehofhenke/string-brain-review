@@ -1151,6 +1151,7 @@ async function loadReviewAll(){
   items.forEach(it=>{
     if(!it.decision) it.decision = decisionForItem(it);
     if(!it.created_date) it.created_date = pickDate(it) || '';
+    if(!it.domain) it.domain = domainForItem(it);
   });
   items.sort((a,b)=>{
     // Resolved sink to bottom
@@ -1164,17 +1165,25 @@ async function loadReviewAll(){
     return (a.created_date||'9999').localeCompare(b.created_date||'9999');
   });
 
-  // Counts
-  const counts = items.reduce((acc,i)=>{acc[i.source]=(acc[i.source]||0)+1;return acc},{});
-  const pendingCount = items.filter(i=>i.status!=='resolved').length;
-  const sources = ['all',...Object.keys(counts)];
+  // Counts by domain (pending only — what you act on)
+  const pendingItems = items.filter(i=>i.status!=='resolved');
+  const pendingCount = pendingItems.length;
+  const DOMAIN_ORDER = ['clients','contacts','projects','leads','team','meetings','help-docs','docs','errors','misc'];
+  const DOMAIN_LABELS = {
+    'clients':'Clients','contacts':'Contacts','projects':'Projects','leads':'Leads',
+    'team':'Team','meetings':'Meetings','help-docs':'Help Docs','docs':'Documentation',
+    'errors':'Errors','misc':'Misc'
+  };
+  const domainCounts = {};
+  pendingItems.forEach(i=>{domainCounts[i.domain]=(domainCounts[i.domain]||0)+1});
+  const presentDomains = DOMAIN_ORDER.filter(d=>domainCounts[d]);
 
-  // Left pane: filters + list rows
   const filterBar = `
     <div style="padding:12px 14px;border-bottom:1px solid var(--border);background:var(--surface)">
-      <div style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);font-weight:700;margin-bottom:6px">Filter by source</div>
+      <div style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);font-weight:700;margin-bottom:6px">Filter by category</div>
       <div class="filter-bar" id="review-source-chips">
-        ${sources.map(s=>`<button class="chip ${s==='all'?'active':''}" data-source="${s}" onclick="filterReviewSource('${s}')">${escapeHtml(s)}<span class="ct">${s==='all'?items.length:(counts[s]||0)}</span></button>`).join('')}
+        <button class="chip active" data-domain="all" onclick="filterReviewDomain('all')">All<span class="ct">${pendingCount}</span></button>
+        ${presentDomains.map(d=>`<button class="chip" data-domain="${d}" onclick="filterReviewDomain('${d}')">${escapeHtml(DOMAIN_LABELS[d]||d)}<span class="ct">${domainCounts[d]}</span></button>`).join('')}
       </div>
       <label style="display:flex;align-items:center;gap:6px;margin-top:10px;font-size:11px;color:var(--muted);cursor:pointer">
         <input type="checkbox" id="show-resolved-toggle" ${REVIEW_SHOW_RESOLVED?'checked':''} onchange="toggleShowResolved()"> Show resolved
@@ -1195,6 +1204,32 @@ async function loadReviewAll(){
   window._REVIEW_FILTER = 'all';
   renderReviewRows('all');
 }
+
+// Classify an item to a domain (clients/contacts/projects/etc.) regardless of its file source
+function domainForItem(it){
+  const q = (it.queue_type||'').toLowerCase();
+  if(q.includes('project')) return 'projects';
+  if(q.includes('contact')) return 'contacts';
+  if(q.includes('client')) return 'clients';
+  if(q.includes('lead')) return 'leads';
+  if(q.includes('team')) return 'team';
+  if(q.includes('meeting')) return 'meetings';
+  if(it.source === 'qa') return 'help-docs';
+  if(it.source === 'docs') return 'docs';
+  if(it.source === 'error') return 'errors';
+  if(it.source === 'inbox') return 'meetings';
+  if(it.source === 'project') return 'projects';
+  return 'misc';
+}
+
+const DOMAIN_PILL_CLASS = {
+  'clients':'people','contacts':'people','projects':'project','leads':'inbox','team':'docs',
+  'meetings':'inbox','help-docs':'qa','docs':'docs','errors':'error','misc':'people'
+};
+const DOMAIN_LABEL_SHORT = {
+  'clients':'Clients','contacts':'Contacts','projects':'Projects','leads':'Leads',
+  'team':'Team','meetings':'Meeting','help-docs':'Help Doc','docs':'Doc','errors':'Error','misc':'Misc'
+};
 
 function pickDate(it){
   return it.created_date || it.queue_created_date || it.date;
@@ -1261,23 +1296,25 @@ function decisionForItem(it){
   return it.desc || '';
 }
 
-function renderReviewRows(src){
-  window._REVIEW_FILTER = src;
+function renderReviewRows(domain){
+  window._REVIEW_FILTER = domain;
   const all = (window._REVIEW_ITEMS||[]);
-  const items = all.filter(i=>src==='all'||i.source===src);
+  const items = all.filter(i=>domain==='all'||i.domain===domain);
   const wrap = document.getElementById('review-rows');
   if(!wrap) return;
   if(!items.length){
     wrap.innerHTML = `<div class="empty-state" style="padding:40px 20px"><div class="icon">✓</div><div>Nothing to review in this category — nice.</div></div>`;
     return;
   }
-  wrap.innerHTML = items.map((it,idx)=>{
+  wrap.innerHTML = items.map((it)=>{
     const origIdx = all.indexOf(it);
     const age = ageBadge(it.created_date);
+    const pillClass = DOMAIN_PILL_CLASS[it.domain] || 'people';
+    const pillLabel = DOMAIN_LABEL_SHORT[it.domain] || it.domain;
     return `
       <div class="review-row ${it.status==='resolved'?'resolved':''}" data-idx="${origIdx}" onclick="openReviewItem(${origIdx})">
         <div class="row-top">
-          <span class="row-pill ${escapeAttr(it.source)}">${escapeHtml(it.source_label)}</span>
+          <span class="row-pill ${pillClass}">${escapeHtml(pillLabel)}</span>
           ${it.status==='resolved'?'<span style="color:#3a7d44;font-weight:700">✓ DONE</span>':''}
           ${age?`<span class="row-age">${age}</span>`:''}
         </div>
@@ -1288,10 +1325,12 @@ function renderReviewRows(src){
   }).join('');
 }
 
-function filterReviewSource(src){
-  document.querySelectorAll('#review-source-chips .chip').forEach(c=>c.classList.toggle('active',c.dataset.source===src));
-  renderReviewRows(src);
+function filterReviewDomain(d){
+  document.querySelectorAll('#review-source-chips .chip').forEach(c=>c.classList.toggle('active',c.dataset.domain===d));
+  renderReviewRows(d);
 }
+// Back-compat for any old onclick that still calls filterReviewSource
+function filterReviewSource(d){ filterReviewDomain(d) }
 
 function openReviewItem(idx){
   const it = (window._REVIEW_ITEMS||[])[idx];
@@ -1341,7 +1380,7 @@ function openReviewItem(idx){
   pane.innerHTML = `
     <div class="review-detail">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
-        <span class="row-pill ${escapeAttr(it.source)}">${escapeHtml(it.source_label)}</span>
+        <span class="row-pill ${DOMAIN_PILL_CLASS[it.domain]||'people'}">${escapeHtml(DOMAIN_LABEL_SHORT[it.domain]||it.domain)}</span>
         ${it.created_date?`<span style="font-size:11px;color:var(--muted)">opened ${escapeHtml(it.created_date)} · ${ageBadge(it.created_date)}</span>`:''}
       </div>
       <h1>${escapeHtml(it.title)}</h1>
