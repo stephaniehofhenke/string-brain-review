@@ -384,6 +384,7 @@ a.broken-link{color:var(--red);text-decoration:line-through}
       <div class="nav-item" data-view="review-qa">Q&amp;A (Help Docs)</div>
       <div class="nav-item" data-view="review-docs">Documentation</div>
       <div class="nav-item" data-view="review-errors">Errors</div>
+      <div class="nav-item" data-view="incidents">Incidents <span class="badge" id="badge-incidents">—</span></div>
     </div>
     <div class="nav-section">
       <div class="nav-header">Admin</div>
@@ -795,6 +796,7 @@ const VIEWS = {
   'review-qa':  {label:'Q&A candidates', type:'help-docs'},
   'review-docs':{label:'Documentation', type:'documentation'},
   'review-errors':{label:'Errors', type:'errors'},
+  'incidents':  {label:'Incidents', type:'incidents'},
   'home':       {label:'Home', type:'home'},
   'chat':       {label:'Chat', type:'chat'},
   'settings':   {label:'Settings', type:'settings'},
@@ -843,7 +845,153 @@ async function switchView(v){
   else if(cfg.type==='help-docs'){await loadFolderList('Help Docs/candidates')}
   else if(cfg.type==='documentation'){await loadFolderList('Documentation/candidates')}
   else if(cfg.type==='errors'){await loadFolderList('Review/errors')}
+  else if(cfg.type==='incidents'){await loadIncidents()}
   else{renderEmpty(cfg.label+' coming soon')}
+}
+
+// ───────────── Incidents view ─────────────
+async function loadIncidents(){
+  const items = document.getElementById('list-items');
+  const pane = document.getElementById('detail-pane');
+  items.innerHTML = '<div class="loading"><span class="spinner"></span>&nbsp; Loading incidents…</div>';
+  pane.innerHTML = '<div class="empty-state"><div class="icon">📋</div><div>Select an incident to see details.</div></div>';
+
+  let incidents = [];
+  try{
+    const r = await fetch(`${PROXY_URL}/api/incidents`,{headers:{Authorization:`Bearer ${DASHBOARD_BEARER}`}});
+    const data = await r.json();
+    incidents = data.incidents || [];
+  }catch(e){
+    items.innerHTML = `<div class="empty-state"><div>Failed to load: ${escapeHtml(e.message)}</div></div>`;
+    return;
+  }
+
+  CURRENT_RECORDS = incidents.map(inc => ({
+    name: inc.id,
+    incident: inc,
+    label: inc.message?.slice(0, 80) || inc.id,
+  }));
+
+  const pending = incidents.filter(i=>i.status==='pending').length;
+  const autoFixing = incidents.filter(i=>i.status==='auto-fixing').length;
+  const escalated = incidents.filter(i=>i.status==='escalated').length;
+  const manual = incidents.filter(i=>i.status==='manual').length;
+  const resolved = incidents.filter(i=>i.status==='resolved').length;
+  document.getElementById('list-count').textContent = `${pending+autoFixing+manual} open`;
+  document.getElementById('badge-incidents').textContent = pending + manual;
+
+  items.innerHTML = `
+    <div style="padding:12px 14px;border-bottom:1px solid var(--border);background:var(--surface)">
+      <button class="btn-sm btn-primary" onclick="runIncidentHandler()">🤖 Run handler now</button>
+      <div style="margin-top:10px;display:flex;flex-wrap:wrap;gap:6px;font-size:11px">
+        <span style="padding:2px 8px;background:#fff4d0;color:#a78700;border-radius:6px;font-weight:600">${pending} pending</span>
+        <span style="padding:2px 8px;background:#e8f4f8;color:#1C5967;border-radius:6px;font-weight:600">${autoFixing} auto-fixing</span>
+        <span style="padding:2px 8px;background:#f0e0e0;color:#a02020;border-radius:6px;font-weight:600">${escalated} escalated</span>
+        <span style="padding:2px 8px;background:#eee;color:#666;border-radius:6px;font-weight:600">${manual} manual</span>
+        <span style="padding:2px 8px;background:#dcf0e0;color:#3a7d44;border-radius:6px;font-weight:600">${resolved} resolved</span>
+      </div>
+    </div>
+    <div id="incidents-rows">
+      ${incidents.length === 0 ? '<div class="empty-state" style="padding:30px"><div class="icon">✓</div><div>No incidents — system is clean.</div></div>' :
+        incidents.map((inc, idx) => incidentRowHtml(inc, idx)).join('')}
+    </div>
+  `;
+}
+
+function incidentRowHtml(inc, idx){
+  const statusColors = {
+    pending:'#a78700', 'auto-fixing':'#1C5967', escalated:'#a02020',
+    manual:'#666', resolved:'#3a7d44',
+  };
+  const ageMin = Math.floor((Date.now() - new Date(inc.ts).getTime()) / 60000);
+  const age = ageMin < 60 ? `${ageMin}m` : ageMin < 1440 ? `${Math.floor(ageMin/60)}h` : `${Math.floor(ageMin/1440)}d`;
+  return `
+    <div class="review-row" onclick="openIncident(${idx})">
+      <div class="row-top">
+        <span class="row-pill" style="color:${statusColors[inc.status]||'#666'}">${inc.status}</span>
+        <span style="color:var(--muted);font-size:10px">${escapeHtml(inc.category)}</span>
+        <span class="row-age">${age}</span>
+      </div>
+      <div class="row-title">${escapeHtml(inc.message?.slice(0,80) || '(no message)')}</div>
+      <div class="row-decision">${escapeHtml(inc.source)} · attempts: ${inc.attempts}</div>
+    </div>
+  `;
+}
+
+function openIncident(idx){
+  const inc = CURRENT_RECORDS[idx]?.incident;
+  if(!inc) return;
+  const pane = document.getElementById('detail-pane');
+  pane.innerHTML = `
+    <div class="review-detail">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+        <span class="row-pill">${escapeHtml(inc.status)}</span>
+        <span style="font-size:11px;color:var(--muted)">${escapeHtml(inc.category)} · ${escapeHtml(inc.severity)}</span>
+        <span style="font-size:11px;color:var(--muted);margin-left:auto">${escapeHtml(inc.ts)}</span>
+      </div>
+      <h1>${escapeHtml(inc.message || '(no message)')}</h1>
+      <div style="font-size:13px;color:var(--text2);margin-bottom:14px">
+        <strong>ID:</strong> <code>${escapeHtml(inc.id)}</code><br>
+        <strong>Source:</strong> ${escapeHtml(inc.source)}<br>
+        <strong>Attempts:</strong> ${inc.attempts}${inc.last_attempt?` (last: ${escapeHtml(inc.last_attempt)})`:''}<br>
+        ${inc.resolution?`<strong>Resolution:</strong> ${escapeHtml(inc.resolution)}<br>`:''}
+      </div>
+      ${inc.context && Object.keys(inc.context).length ? `
+        <div style="margin:14px 0">
+          <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);font-weight:700;margin-bottom:6px">Context</div>
+          <pre style="background:var(--surface2);padding:10px 12px;border-radius:6px;font-size:11px;overflow-x:auto;white-space:pre-wrap">${escapeHtml(JSON.stringify(inc.context, null, 2))}</pre>
+        </div>` : ''}
+      <div class="action-row">
+        ${inc.status !== 'resolved' ? `<button class="btn-done" onclick="markIncident('${inc.id}','resolved',this)">✓ Mark Resolved</button>` : ''}
+        ${inc.status === 'pending' || inc.status === 'manual' ? `<button class="btn-chat" onclick="markIncident('${inc.id}','escalated',this)">🚨 Escalate Now</button>` : ''}
+        <button class="btn-chat" onclick="chatAboutIncident('${inc.id.replace(/'/g,"\\'")}')">💬 Chat about this</button>
+      </div>
+    </div>
+  `;
+}
+
+async function markIncident(id, status, btn){
+  if(btn){ btn.disabled = true; btn.textContent = '…'; }
+  try{
+    const r = await fetch(`${PROXY_URL}/api/incidents`,{
+      method:'PATCH',
+      headers:{Authorization:`Bearer ${DASHBOARD_BEARER}`, 'Content-Type':'application/json'},
+      body: JSON.stringify({id, status, resolution: 'Manually marked ' + status + ' via dashboard'}),
+    });
+    const d = await r.json();
+    if(d.ok){
+      await loadIncidents();
+    } else {
+      alert('Failed: '+JSON.stringify(d));
+    }
+  }catch(e){ alert('Error: '+e.message); }
+}
+
+async function runIncidentHandler(){
+  const btn = event?.target;
+  if(btn){ btn.disabled = true; btn.textContent = '🤖 Running…'; }
+  try{
+    const r = await fetch(`${PROXY_URL}/api/run-incident-handler`,{
+      method:'POST',
+      headers:{Authorization:`Bearer ${DASHBOARD_BEARER}`},
+    });
+    const d = await r.json();
+    alert(`Handler result:\n  processed: ${d.processed}\n  auto-fixed: ${d.auto_fixed}\n  escalated: ${d.escalated}\n  still pending: ${d.still_pending}\n  errors: ${d.errors?.length||0}${d.errors?.length?'\n\n'+d.errors.join('\n'):''}`);
+    await loadIncidents();
+  }catch(e){
+    alert('Failed: '+e.message);
+  }
+}
+
+function chatAboutIncident(id){
+  const inc = (CURRENT_RECORDS||[]).find(r=>r.incident?.id===id)?.incident;
+  if(!inc) return;
+  openChatWithContext({
+    kind: 'incident',
+    title: inc.message || inc.id,
+    body: JSON.stringify(inc, null, 2),
+    path: 'Review/incidents.jsonl'
+  });
 }
 
 async function loadEntityList(folder){
