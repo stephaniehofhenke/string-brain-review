@@ -3080,6 +3080,12 @@ Workflow: read context first, plan in 1-2 sentences, then execute. Be concise. U
         const short = result.ok ? `✓ ${tu.name} → ok` : `✗ ${tu.name} failed: ${result.error||'unknown'}`;
         CHAT_HISTORY.push({role:'assistant', content: short, _tool:true});
         toolResults.push({type:'tool_result', tool_use_id: tu.id, content: JSON.stringify(result).slice(0,8000), is_error: !result.ok});
+        // Audit log: every tool call that mutates state
+        if(['write_file','delete_file','archive_notion_page','update_notion_page'].includes(tu.name)){
+          const path = tu.input.path || tu.input.page_id || '(?)';
+          const status = result.ok ? '✓' : '✗ FAILED';
+          appendAuditLog(`**chat.${tu.name}** ${status} \`${path}\`\n\nArgs: \`${JSON.stringify(tu.input).slice(0,400)}\`\n\nResult: ${result.message || result.error || 'ok'}`).catch(()=>{});
+        }
         if(tu.name === 'finish'){ renderChat(); return; }
       }
       renderChat();
