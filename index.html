@@ -1,714 +1,784 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <title>STRING Brain</title>
-  <style>
-    /* ── Tokens ── */
-    :root {
-      --bg:        #F1EFE7;
-      --surface:   #FFFFFF;
-      --surface2:  #F2EFDA;
-      --border:    rgba(52,52,62,0.09);
-      --text:      #34343E;
-      --text2:     #4A4A56;
-      --muted:     #8A8A96;
-      --gold:      #CCBE6D;
-      --gold-dark: #A89E50;
-      --red:       #B52025;
-      --blue:      #3BA9D0;
-      --teal:      #1C5967;
-      --r:         12px;
-      --shadow:    0 1px 8px rgba(52,52,62,0.07);
-      --shadow-md: 0 4px 20px rgba(52,52,62,0.11);
-      --font:      -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Helvetica, Arial, sans-serif;
-      --ease:      0.16s cubic-bezier(0.25,0.46,0.45,0.94);
-    }
-    @media (prefers-color-scheme: dark) {
-      :root {
-        --bg:       #181E22;
-        --surface:  #212C33;
-        --surface2: #283540;
-        --border:   rgba(255,255,255,0.08);
-        --text:     #F1EFE7;
-        --text2:    rgba(241,239,231,0.7);
-        --muted:    #7A8E98;
-        --gold:     #CCBE6D;
-        --gold-dark:#B8AA56;
-        --red:      #E04040;
-        --blue:     #3BA9D0;
-        --teal:     #4DBCCC;
-      }
-    }
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>STRING Brain</title>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/dist/js-yaml.min.js"></script>
+<style>
+:root{
+  --bg:#F1EFE7; --surface:#FFFFFF; --surface2:#F2EFDA; --sidebar:#1C5967; --sidebar-text:#F1EFE7;
+  --border:rgba(52,52,62,0.09); --text:#34343E; --text2:#4A4A56; --muted:#8A8A96;
+  --gold:#CCBE6D; --gold-dark:#A89E50; --red:#B52025; --blue:#3BA9D0; --teal:#1C5967; --green:#3a7d44;
+  --r:8px; --shadow:0 1px 4px rgba(52,52,62,0.07); --shadow-md:0 4px 16px rgba(52,52,62,0.10);
+  --font:-apple-system,BlinkMacSystemFont,'SF Pro Display','Segoe UI',Helvetica,Arial,sans-serif;
+}
+@media(prefers-color-scheme:dark){
+  :root{
+    --bg:#15191E; --surface:#1F2730; --surface2:#283540; --sidebar:#0F1A20; --sidebar-text:#F1EFE7;
+    --border:rgba(255,255,255,0.08); --text:#F1EFE7; --text2:rgba(241,239,231,0.7); --muted:#7A8E98;
+  }
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;overflow:hidden;font-family:var(--font);background:var(--bg);color:var(--text);font-size:14px;line-height:1.5}
+button{font-family:inherit;cursor:pointer;border:none;background:none;color:inherit;font-size:inherit}
+input,textarea{font-family:inherit;font-size:inherit;color:inherit}
+a{color:var(--teal);text-decoration:none}
+a:hover{text-decoration:underline}
+a.wikilink{color:var(--gold-dark);font-weight:500}
+a.wikilink:hover{text-decoration:underline}
+a.broken-link{color:var(--red);text-decoration:line-through}
 
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
-    html, body { height: 100%; overflow: hidden; font-family: var(--font); background: var(--bg); color: var(--text); }
+/* ── Setup screen ── */
+#setup{position:fixed;inset:0;background:var(--teal);z-index:9999;display:flex;align-items:center;justify-content:center;padding:24px}
+.setup-card{background:var(--surface);border-radius:16px;padding:36px 32px;max-width:420px;width:100%;box-shadow:var(--shadow-md)}
+.setup-title{font-size:24px;font-weight:700;color:var(--text);margin-bottom:6px}
+.setup-title span{color:var(--gold-dark)}
+.setup-sub{color:var(--muted);font-size:13px;margin-bottom:24px}
+.field{margin-top:12px}
+.field label{display:block;font-size:12px;font-weight:600;color:var(--text2);margin-bottom:4px;text-transform:uppercase;letter-spacing:0.4px}
+.field input{width:100%;padding:10px 12px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text)}
+.field input:focus{outline:none;border-color:var(--teal)}
+.btn{background:var(--teal);color:#fff;padding:11px 20px;border-radius:8px;font-weight:600;width:100%;margin-top:20px}
+.btn:hover{opacity:0.9}
+.btn-sm{padding:6px 14px;border-radius:6px;font-size:12px;font-weight:500;background:var(--surface2);color:var(--text)}
+.btn-sm:hover{background:var(--border)}
+.btn-primary{background:var(--teal);color:#fff}
+.btn-danger{background:var(--red);color:#fff}
 
-    /* ── Layout ── */
-    #app    { height: 100vh; height: 100dvh; display: flex; flex-direction: column; }
-    #screen { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; }
-    #screen.locked { overflow: hidden; }
+/* ── App layout ── */
+#app{display:none;height:100vh;grid-template-columns:240px 1fr;grid-template-rows:1fr}
+#app.ready{display:grid}
+#app.with-detail{grid-template-columns:240px 360px 1fr}
 
-    /* ── Setup ── */
-    #setup { position: fixed; inset: 0; background: var(--teal); z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 24px; }
-    .setup-card { background: var(--surface); border-radius: 20px; padding: 36px 28px; max-width: 380px; width: 100%; box-shadow: var(--shadow-md); }
-    .setup-wordmark { font-size: 11px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
-    .setup-title { font-size: 26px; font-weight: 700; letter-spacing: -0.5px; color: var(--text); margin-bottom: 4px; }
-    .setup-title span { color: var(--gold-dark); }
-    .setup-sub { color: var(--muted); font-size: 14px; margin-bottom: 28px; }
-    .field + .field { margin-top: 14px; }
-    .field label { display: block; font-size: 11px; font-weight: 700; color: var(--muted); margin-bottom: 5px; letter-spacing: 0.5px; text-transform: uppercase; }
-    .field input { width: 100%; background: var(--bg); border: 1.5px solid var(--border); color: var(--text); border-radius: 10px; padding: 12px 14px; font-size: 15px; outline: none; font-family: var(--font); transition: border-color var(--ease); }
-    .field input:focus { border-color: var(--gold); }
-    .btn-primary { background: var(--teal); color: #fff; border: none; border-radius: 10px; padding: 14px 20px; font-size: 15px; font-weight: 600; cursor: pointer; width: 100%; margin-top: 24px; transition: opacity var(--ease); letter-spacing: 0.2px; }
-    .btn-primary:active { opacity: 0.82; }
-    .setup-error { color: var(--red); font-size: 13px; margin-top: 10px; text-align: center; min-height: 18px; }
+/* ── Sidebar ── */
+#sidebar{background:var(--sidebar);color:var(--sidebar-text);padding:14px 0;overflow-y:auto;display:flex;flex-direction:column}
+.brand{padding:6px 18px 18px;border-bottom:1px solid rgba(255,255,255,0.08);margin-bottom:8px}
+.brand h1{font-size:16px;font-weight:700;letter-spacing:-0.3px}
+.brand h1 span{color:var(--gold)}
+.brand .sub{font-size:11px;color:rgba(241,239,231,0.55);margin-top:2px}
+.nav-section{padding:6px 0}
+.nav-header{padding:8px 18px 4px;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:rgba(241,239,231,0.45);font-weight:700}
+.nav-item{display:flex;align-items:center;justify-content:space-between;padding:8px 18px;cursor:pointer;color:rgba(241,239,231,0.8);font-size:13px;transition:background 0.1s}
+.nav-item:hover{background:rgba(255,255,255,0.05);color:#fff}
+.nav-item.active{background:rgba(204,190,109,0.18);color:#fff;border-left:3px solid var(--gold);padding-left:15px}
+.nav-item .badge{background:var(--gold);color:#1C5967;font-size:10px;padding:1px 6px;border-radius:8px;font-weight:700;min-width:18px;text-align:center}
+.nav-item .lock{font-size:10px;opacity:0.6}
+.nav-spacer{flex:1}
+.nav-footer{padding:8px 18px;border-top:1px solid rgba(255,255,255,0.08);font-size:11px;color:rgba(241,239,231,0.5)}
 
-    /* ── Header ── */
-    header { background: var(--teal); padding: 0 18px; height: 52px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 50; flex-shrink: 0; }
-    .wordmark { font-size: 13px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; color: rgba(255,255,255,0.5); }
-    .wordmark span { color: var(--gold); }
-    .hdr-actions { display: flex; gap: 6px; }
-    .icon-btn { background: rgba(255,255,255,0.1); border: none; border-radius: 8px; width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: background var(--ease); }
-    .icon-btn:active { background: rgba(255,255,255,0.2); }
-    .icon-btn svg { width: 16px; height: 16px; stroke: rgba(255,255,255,0.85); fill: none; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
+/* ── Middle pane (list) ── */
+#list-pane{background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden}
+.list-header{padding:16px 18px 12px;border-bottom:1px solid var(--border)}
+.list-header h2{font-size:18px;font-weight:700;letter-spacing:-0.3px;margin-bottom:8px}
+.list-header h2 small{font-size:11px;color:var(--muted);font-weight:500;text-transform:uppercase;letter-spacing:1px;margin-left:8px}
+.search-box{position:relative}
+.search-box input{width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text)}
+.search-box input:focus{outline:none;border-color:var(--teal)}
+.list-items{flex:1;overflow-y:auto;padding:6px 0}
+.list-item{padding:10px 18px;cursor:pointer;border-bottom:1px solid var(--border);transition:background 0.1s}
+.list-item:hover{background:var(--surface2)}
+.list-item.active{background:var(--surface2);border-left:3px solid var(--gold);padding-left:15px}
+.list-item-title{font-weight:600;color:var(--text);font-size:14px}
+.list-item-sub{font-size:12px;color:var(--muted);margin-top:2px}
+.list-item-badges{display:flex;gap:4px;margin-top:4px}
+.badge-pill{font-size:10px;padding:1px 7px;border-radius:8px;font-weight:600}
+.badge-active{background:#dcf0e0;color:#3a7d44}
+.badge-inactive{background:#f0e0e0;color:#a02020}
+.badge-former{background:#eee;color:#666}
+.badge-lead{background:#fff4d0;color:#a78700}
 
-    /* ── Tab bar ── */
-    #tabbar { background: var(--surface); border-top: 1px solid var(--border); display: flex; height: 60px; padding-bottom: env(safe-area-inset-bottom); position: sticky; bottom: 0; z-index: 50; flex-shrink: 0; }
-    .tab { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; color: var(--muted); transition: color var(--ease); border-top: 2px solid transparent; padding-top: 2px; position: relative; }
-    .tab.active { color: var(--teal); border-top-color: var(--gold); }
-    .tab-label { font-size: 10px; font-weight: 600; letter-spacing: 0.4px; text-transform: uppercase; }
-    .tab-count { position: absolute; top: 6px; right: calc(50% - 16px); background: var(--teal); color: #fff; border-radius: 99px; font-size: 9px; font-weight: 700; padding: 1px 5px; min-width: 16px; text-align: center; line-height: 14px; }
-    .tab-count.hide { display: none; }
-    /* Tab SVG icons */
-    .tab svg { width: 18px; height: 18px; stroke: currentColor; fill: none; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; margin-bottom: 3px; }
+/* ── Right pane (detail) ── */
+#detail-pane{background:var(--bg);overflow-y:auto;padding:0}
+#detail-pane.empty{display:flex;align-items:center;justify-content:center;color:var(--muted)}
+.detail-header{padding:18px 24px 12px;background:var(--surface);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:10}
+.detail-header h1{font-size:22px;font-weight:700;letter-spacing:-0.5px}
+.detail-meta{font-size:12px;color:var(--muted);margin-top:4px;display:flex;gap:12px;flex-wrap:wrap}
+.detail-meta .badge-pill{display:inline-block}
 
-    /* ── List ── */
-    .list-header { padding: 22px 20px 12px; }
-    .list-title  { font-size: 26px; font-weight: 700; letter-spacing: -0.4px; }
-    .list-sub    { font-size: 13px; color: var(--muted); margin-top: 2px; }
-    .list-body   { padding: 0 16px 24px; }
+/* ── Quick Links bar ── */
+.quicklinks{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.qlink{display:inline-flex;align-items:center;gap:4px;padding:5px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;font-size:11px;font-weight:600;color:var(--text);transition:all 0.1s;text-decoration:none}
+.qlink:hover{background:var(--gold);color:var(--teal);border-color:var(--gold);text-decoration:none}
+.qlink .icon{font-size:14px}
 
-    /* ── Cards ── */
-    .card { background: var(--surface); border-radius: var(--r); padding: 14px 16px 14px 0; margin-bottom: 8px; cursor: pointer; transition: transform var(--ease), box-shadow var(--ease); box-shadow: var(--shadow); display: flex; align-items: center; gap: 0; overflow: hidden; }
-    .card:active { transform: scale(0.985); box-shadow: none; }
-    .card-strip { width: 4px; min-height: 44px; align-self: stretch; flex-shrink: 0; margin-right: 14px; border-radius: 0; }
-    .strip-gold  { background: var(--gold); }
-    .strip-blue  { background: var(--blue); }
-    .strip-red   { background: var(--red); }
-    .strip-teal  { background: var(--teal); }
-    .card-body  { flex: 1; min-width: 0; }
-    .card-title { font-size: 14px; font-weight: 600; color: var(--text); line-height: 1.35; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .card-date  { font-size: 12px; color: var(--muted); margin-top: 3px; }
-    .card-arrow { color: var(--border); font-size: 18px; font-weight: 300; flex-shrink: 0; padding-right: 4px; }
+/* ── Detail body ── */
+.detail-body{padding:20px 24px 40px;max-width:900px}
+.detail-body h1,.detail-body h2,.detail-body h3{margin-top:1.4em;margin-bottom:0.5em;font-weight:700;color:var(--text)}
+.detail-body h1{font-size:22px;display:none}  /* hidden — header takes care of this */
+.detail-body h2{font-size:17px;border-bottom:1px solid var(--border);padding-bottom:4px}
+.detail-body h3{font-size:14px}
+.detail-body p{margin:0.6em 0}
+.detail-body ul,.detail-body ol{margin:0.4em 0 0.8em 1.4em}
+.detail-body li{margin:0.2em 0}
+.detail-body code{background:var(--surface2);padding:1px 6px;border-radius:4px;font-size:12px;font-family:Menlo,Monaco,monospace}
+.detail-body table{border-collapse:collapse;margin:0.8em 0;font-size:13px;width:100%}
+.detail-body th,.detail-body td{border:1px solid var(--border);padding:6px 10px;text-align:left}
+.detail-body th{background:var(--surface2);font-weight:600}
+.detail-body blockquote{border-left:3px solid var(--gold);padding:4px 12px;margin:0.6em 0;background:var(--surface2);color:var(--text2)}
+.detail-body hr{margin:1.5em 0;border:none;border-top:1px solid var(--border)}
 
-    /* ── Empty ── */
-    .empty { text-align: center; padding: 72px 32px 40px; }
-    .empty-line { width: 32px; height: 2px; background: var(--gold); border-radius: 99px; margin: 0 auto 20px; }
-    .empty-title { font-size: 17px; font-weight: 600; margin-bottom: 4px; }
-    .empty-sub   { font-size: 13px; color: var(--muted); }
+/* ── Empty/loading states ── */
+.empty-state{text-align:center;padding:40px 20px;color:var(--muted)}
+.empty-state .icon{font-size:32px;opacity:0.4;margin-bottom:8px}
+.loading{display:flex;align-items:center;justify-content:center;padding:30px;color:var(--muted)}
+.spinner{display:inline-block;width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--teal);border-radius:50%;animation:spin 0.6s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
 
-    /* ── Spinner ── */
-    .loading { text-align: center; padding: 80px 20px; }
-    .spinner { width: 24px; height: 24px; border: 2px solid var(--border); border-top-color: var(--gold); border-radius: 50%; animation: spin 0.7s linear infinite; margin: 0 auto; }
-    @keyframes spin { to { transform: rotate(360deg); } }
+/* ── Chat ── */
+#chat-pane{display:none;flex-direction:column;height:100%}
+#chat-pane.active{display:flex}
+.chat-messages{flex:1;overflow-y:auto;padding:18px 24px}
+.chat-msg{margin-bottom:16px;max-width:80%}
+.chat-msg.user{margin-left:auto;text-align:right}
+.chat-msg .role{font-size:10px;text-transform:uppercase;font-weight:700;color:var(--muted);margin-bottom:3px;letter-spacing:0.5px}
+.chat-msg .bubble{background:var(--surface);border:1px solid var(--border);padding:10px 14px;border-radius:10px;display:inline-block;text-align:left}
+.chat-msg.user .bubble{background:var(--teal);color:#fff;border-color:var(--teal)}
+.chat-msg .bubble code{background:rgba(0,0,0,0.05);padding:1px 5px;border-radius:3px;font-size:12px}
+.chat-msg.user .bubble code{background:rgba(255,255,255,0.15)}
+.chat-input-bar{padding:14px 24px;background:var(--surface);border-top:1px solid var(--border);display:flex;gap:8px}
+.chat-input-bar textarea{flex:1;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--bg);resize:none;min-height:40px;max-height:140px}
+.chat-input-bar textarea:focus{outline:none;border-color:var(--teal)}
+.chat-input-bar button{background:var(--teal);color:#fff;padding:0 18px;border-radius:8px;font-weight:600}
+.chat-context-pill{display:inline-block;font-size:11px;background:var(--gold);color:var(--teal);padding:2px 8px;border-radius:6px;margin:0 6px 6px 0;font-weight:600}
 
-    /* ── Detail sheet ── */
-    #detail-sheet { position: fixed; inset: 0; z-index: 100; display: flex; flex-direction: column; background: var(--bg); transform: translateY(100%); transition: transform 0.3s cubic-bezier(0.32,0.72,0,1); }
-    #detail-sheet.open { transform: translateY(0); }
-    .sheet-handle { width: 32px; height: 3px; background: var(--border); border-radius: 99px; margin: 10px auto 0; flex-shrink: 0; }
-    .sheet-header { display: flex; align-items: center; padding: 12px 18px 14px; gap: 12px; border-bottom: 1px solid var(--border); background: var(--surface); flex-shrink: 0; }
-    .sheet-back  { background: none; border: none; color: var(--teal); font-size: 14px; font-weight: 600; cursor: pointer; font-family: var(--font); padding: 4px 0; white-space: nowrap; letter-spacing: 0.1px; }
-    .sheet-title { font-size: 15px; font-weight: 600; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text); }
-    .sheet-body  { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 20px; }
-    .sheet-prose { background: var(--surface); border-radius: var(--r); padding: 20px; font-size: 14px; line-height: 1.8; color: var(--text2); box-shadow: var(--shadow); }
-    .sheet-prose h1 { font-size: 19px; font-weight: 700; color: var(--text); margin-bottom: 14px; letter-spacing: -0.3px; }
-    .sheet-prose h2 { font-size: 13px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin: 20px 0 6px; }
-    .sheet-prose h3 { font-size: 14px; font-weight: 600; color: var(--text); margin: 14px 0 4px; }
-    .sheet-prose p  { margin-bottom: 10px; }
-    .sheet-prose hr { border: none; border-top: 1px solid var(--border); margin: 18px 0; }
-    .sheet-prose pre { background: var(--bg); border-radius: 8px; padding: 12px; font-size: 12px; overflow-x: auto; margin: 10px 0; white-space: pre-wrap; word-break: break-word; color: var(--muted); }
-    .sheet-prose code { background: var(--bg); border-radius: 4px; padding: 2px 5px; font-size: 12px; color: var(--muted); }
-    .sheet-prose strong { color: var(--text); font-weight: 600; }
-    .sheet-prose li { margin-left: 18px; margin-bottom: 4px; }
-    .sheet-actions { padding: 14px 18px; border-top: 1px solid var(--border); background: var(--surface); flex-shrink: 0; padding-bottom: calc(14px + env(safe-area-inset-bottom)); }
-    .action-row { display: flex; gap: 10px; }
-    .btn-action { flex: 1; border: none; border-radius: 10px; padding: 14px 12px; font-size: 15px; font-weight: 600; cursor: pointer; font-family: var(--font); transition: opacity var(--ease); letter-spacing: 0.1px; }
-    .btn-action:active { opacity: 0.72; }
-    .btn-approve   { background: var(--teal); color: #fff; }
-    .btn-reject    { background: rgba(181,32,37,0.1); color: var(--red); }
-    .btn-secondary { background: var(--surface2); color: var(--text2); }
-    .btn-neutral   { background: var(--surface2); color: var(--text2); }
+/* ── Review queue items ── */
+.review-card{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px 16px;margin-bottom:10px}
+.review-card-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+.review-card-title{font-weight:700;font-size:14px}
+.review-card-type{font-size:10px;padding:2px 8px;border-radius:6px;background:var(--surface2);font-weight:600;text-transform:uppercase;letter-spacing:0.4px;color:var(--muted)}
+.review-card-desc{font-size:13px;color:var(--text2);margin-bottom:8px}
+.review-card-items{margin:8px 0}
+.review-sub-item{padding:6px 10px;background:var(--bg);border-radius:6px;margin:4px 0;font-size:12px;display:flex;justify-content:space-between;align-items:center;gap:8px}
+.review-actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.status-resolved{opacity:0.5}
+.status-resolved .review-card-type{background:#dcf0e0;color:#3a7d44}
 
-    /* ── Chat ── */
-    #chat-view { display: flex; flex-direction: column; height: 100%; }
-    .chat-messages { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 20px 16px 10px; }
-    .chat-intro { padding: 32px 8px 24px; }
-    .chat-intro-rule { width: 28px; height: 3px; background: var(--gold); border-radius: 99px; margin-bottom: 16px; }
-    .chat-intro-title { font-size: 22px; font-weight: 700; letter-spacing: -0.4px; margin-bottom: 6px; }
-    .chat-intro-title span { color: var(--gold-dark); }
-    .chat-intro-sub { font-size: 14px; color: var(--muted); line-height: 1.6; margin-bottom: 20px; }
-    .chat-suggestions { display: flex; flex-wrap: wrap; gap: 8px; }
-    .suggestion { background: var(--surface); border: 1.5px solid var(--border); border-radius: 99px; padding: 8px 14px; font-size: 13px; cursor: pointer; color: var(--teal); font-weight: 500; transition: border-color var(--ease); }
-    .suggestion:active { opacity: 0.7; }
-    .chat-bubble { max-width: 82%; margin-bottom: 14px; }
-    .chat-bubble.user  { margin-left: auto; }
-    .bubble-inner { padding: 11px 15px; border-radius: 18px; font-size: 14px; line-height: 1.55; }
-    .chat-bubble.user .bubble-inner      { background: var(--teal); color: #fff; border-bottom-right-radius: 4px; }
-    .chat-bubble.assistant .bubble-inner { background: var(--surface); color: var(--text); border-bottom-left-radius: 4px; box-shadow: var(--shadow); }
-    .bubble-time { font-size: 10px; color: var(--muted); margin-top: 4px; padding: 0 4px; }
-    .chat-bubble.user .bubble-time { text-align: right; }
-    .chat-input-row { padding: 10px 12px; border-top: 1px solid var(--border); background: var(--surface); display: flex; gap: 8px; align-items: flex-end; padding-bottom: calc(10px + env(safe-area-inset-bottom)); flex-shrink: 0; }
-    .chat-textarea { flex: 1; background: var(--bg); border: 1.5px solid var(--border); border-radius: 20px; padding: 10px 16px; font-size: 15px; font-family: var(--font); color: var(--text); outline: none; resize: none; max-height: 120px; line-height: 1.5; transition: border-color var(--ease); }
-    .chat-textarea:focus { border-color: var(--gold); }
-    .btn-send { background: var(--teal); border: none; border-radius: 50%; width: 38px; height: 38px; display: flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0; transition: opacity var(--ease); }
-    .btn-send:active { opacity: 0.7; }
-    .btn-send svg { fill: #fff; width: 15px; height: 15px; }
-
-    /* ── Toast ── */
-    #toast { position: fixed; bottom: calc(76px + env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%) translateY(16px); background: var(--teal); color: #fff; border-radius: 99px; padding: 9px 18px; font-size: 13px; font-weight: 600; z-index: 300; opacity: 0; transition: opacity 0.18s, transform 0.18s; pointer-events: none; white-space: nowrap; letter-spacing: 0.1px; }
-    #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
-
-    /* ── Settings sheet ── */
-    #settings-sheet { position: fixed; inset: 0; z-index: 200; background: rgba(0,0,0,0.35); display: none; }
-    #settings-sheet.open { display: block; }
-    .settings-panel { position: absolute; bottom: 0; left: 0; right: 0; background: var(--surface); border-radius: 18px 18px 0 0; padding: 22px 22px; padding-bottom: calc(22px + env(safe-area-inset-bottom)); }
-    .settings-title { font-size: 17px; font-weight: 700; margin-bottom: 22px; letter-spacing: -0.2px; }
-    .settings-row { margin-bottom: 14px; }
-    .settings-label { font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 5px; }
-    .settings-input { width: 100%; background: var(--bg); border: 1.5px solid var(--border); color: var(--text); border-radius: 10px; padding: 11px 14px; font-size: 14px; outline: none; font-family: var(--font); transition: border-color var(--ease); }
-    .settings-input:focus { border-color: var(--gold); }
-
-    @media (min-width: 640px) {
-      #detail-sheet { max-width: 680px; left: 50%; right: auto; transform: translateX(-50%) translateY(100%); width: 100%; }
-      #detail-sheet.open { transform: translateX(-50%) translateY(0); }
-      .action-row .btn-action { max-width: 220px; }
-    }
-  </style>
+/* ── Settings ── */
+.settings-form{max-width:500px;padding:20px 0}
+.settings-form .field input{font-family:Menlo,Monaco,monospace;font-size:12px}
+</style>
 </head>
 <body>
 
-<!-- Setup -->
+<!-- ── Setup ── -->
 <div id="setup">
   <div class="setup-card">
-    <div class="setup-wordmark"><span>STRING</span> Brain</div>
-    <div class="setup-title">Connect your<br><span>workspace</span></div>
-    <div class="setup-sub">Credentials are stored locally on this device only.</div>
+    <div class="setup-title">STRING <span>Brain</span></div>
+    <div class="setup-sub">Connect your GitHub vault and Claude API to begin.</div>
     <div class="field">
       <label>GitHub Token</label>
-      <input type="password" id="s-github" placeholder="ghp_..." autocomplete="off">
-    </div>
-    <div class="field">
-      <label>Vault Repo</label>
-      <input type="text" id="s-repo" value="stephaniehofhenke/string-marketing-vault">
+      <input id="setup-gh" type="password" placeholder="ghp_...">
     </div>
     <div class="field">
       <label>Claude API Key</label>
-      <input type="password" id="s-claude" placeholder="sk-ant-..." autocomplete="off">
+      <input id="setup-anthropic" type="password" placeholder="sk-ant-...">
     </div>
-    <button class="btn-primary" onclick="saveSetup()">Connect</button>
-    <div id="setup-error" class="setup-error"></div>
+    <button class="btn" onclick="saveSetup()">Continue</button>
   </div>
 </div>
 
-<!-- App -->
-<div id="app" style="display:none">
+<!-- ── App ── -->
+<div id="app">
 
-  <header>
-    <div class="wordmark"><span>STRING</span> Brain</div>
-    <div class="hdr-actions">
-      <button class="icon-btn" onclick="refreshAll()" title="Refresh">
-        <svg viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
-      </button>
-      <button class="icon-btn" onclick="openSettings()" title="Settings">
-        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-      </button>
-    </div>
-  </header>
-
-  <div id="screen">
-
-    <!-- Candidates -->
-    <div id="tab-candidates" class="tab-content">
-      <div class="list-header">
-        <div class="list-title">Review</div>
-        <div class="list-sub">Help doc candidates pending approval</div>
-      </div>
-      <div class="list-body" id="list-candidates"></div>
+  <!-- Sidebar -->
+  <nav id="sidebar">
+    <div class="brand">
+      <h1>STRING <span>Brain</span></h1>
+      <div class="sub">Control center · v2</div>
     </div>
 
-    <!-- Policy Review -->
-    <div id="tab-policy" class="tab-content" style="display:none">
-      <div class="list-header">
-        <div class="list-title">Policy</div>
-        <div class="list-sub">Conflicting or nuanced decisions — approve before publishing</div>
-      </div>
-      <div class="list-body" id="list-policy"></div>
+    <div class="nav-section">
+      <div class="nav-item" data-view="home">Home</div>
     </div>
-
-    <!-- Tickets -->
-    <div id="tab-tickets" class="tab-content" style="display:none">
-      <div class="list-header">
-        <div class="list-title">Unmatched</div>
-        <div class="list-sub">Tickets with no client match</div>
-      </div>
-      <div class="list-body" id="list-tickets"></div>
+    <div class="nav-section">
+      <div class="nav-header">Records</div>
+      <div class="nav-item" data-view="Clients">Clients <span class="badge" id="badge-Clients">—</span></div>
+      <div class="nav-item" data-view="Contacts">Contacts <span class="badge" id="badge-Contacts">—</span></div>
+      <div class="nav-item" data-view="Leads">Leads <span class="badge" id="badge-Leads">—</span></div>
+      <div class="nav-item" data-view="Projects">Projects <span class="badge" id="badge-Projects">—</span></div>
+      <div class="nav-item" data-view="Team">Team <span class="badge" id="badge-Team">—</span></div>
+      <div class="nav-item" data-view="Services">Services <span class="badge" id="badge-Services">—</span></div>
+      <div class="nav-item" data-view="Systems">Systems <span class="badge" id="badge-Systems">—</span></div>
     </div>
-
-    <!-- Errors -->
-    <div id="tab-errors" class="tab-content" style="display:none">
-      <div class="list-header">
-        <div class="list-title">Errors</div>
-        <div class="list-sub">Automation failures for review</div>
-      </div>
-      <div class="list-body" id="list-errors"></div>
+    <div class="nav-section">
+      <div class="nav-header">Review</div>
+      <div class="nav-item" data-view="review-people">People <span class="badge" id="badge-people">—</span></div>
+      <div class="nav-item" data-view="review-qa">Q&amp;A (Help Docs)</div>
+      <div class="nav-item" data-view="review-docs">Documentation</div>
+      <div class="nav-item" data-view="review-errors">Errors</div>
     </div>
-
-    <!-- Contacts -->
-    <div id="tab-contacts" class="tab-content" style="display:none">
-      <div class="list-header">
-        <div class="list-title">Contacts</div>
-        <div class="list-sub">New people to identify</div>
-      </div>
-      <div class="list-body" id="list-contacts"></div>
+    <div class="nav-section">
+      <div class="nav-header">Admin</div>
+      <div class="nav-item" data-view="finances">Finances <span class="lock">🔒</span></div>
+      <div class="nav-item" data-view="hr">HR <span class="lock">🔒</span></div>
     </div>
+    <div class="nav-section">
+      <div class="nav-item" data-view="chat">💬 Chat</div>
+    </div>
+    <div class="nav-spacer"></div>
+    <div class="nav-section">
+      <div class="nav-item" data-view="settings" style="font-size:11px;opacity:0.7">⚙ Settings</div>
+    </div>
+  </nav>
 
-    <!-- Chat -->
-    <div id="tab-chat" class="tab-content" style="display:none; height: calc(100dvh - 52px - 60px);">
-      <div id="chat-view">
-        <div class="chat-messages" id="chat-messages">
-          <div class="chat-intro">
-            <div class="chat-intro-rule"></div>
-            <div class="chat-intro-title">Ask <span>STRING</span> Brain</div>
-            <div class="chat-intro-sub">Client context, content drafts, vault questions — anything.</div>
-            <div class="chat-suggestions">
-              <div class="suggestion" onclick="sendSuggestion(this)">What did we discuss with EverSage last week?</div>
-              <div class="suggestion" onclick="sendSuggestion(this)">Draft a follow-up for a new STRINGConnect client</div>
-              <div class="suggestion" onclick="sendSuggestion(this)">Which help doc candidates are ready to approve?</div>
-              <div class="suggestion" onclick="sendSuggestion(this)">Summarize recent errors</div>
-            </div>
-          </div>
-        </div>
-        <div class="chat-input-row">
-          <textarea class="chat-textarea" id="chat-input" placeholder="Ask something…" rows="1"
-            onkeydown="handleChatKey(event)" oninput="autoResize(this)"></textarea>
-          <button class="btn-send" onclick="sendChat()">
-            <svg viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
-          </button>
-        </div>
+  <!-- Middle pane (list) -->
+  <main id="list-pane">
+    <div class="list-header">
+      <h2 id="list-title">Loading… <small id="list-count"></small></h2>
+      <div class="search-box">
+        <input id="search" placeholder="Search…" oninput="filterList()">
       </div>
     </div>
+    <div class="list-items" id="list-items">
+      <div class="loading"><span class="spinner"></span>&nbsp; Loading…</div>
+    </div>
+  </main>
 
-  </div>
+  <!-- Right pane (detail / chat) -->
+  <section id="detail-pane">
+    <div class="empty-state">
+      <div class="icon">📁</div>
+      <div>Select a record from the list to view details.</div>
+    </div>
+  </section>
 
-  <!-- Tab bar -->
-  <div id="tabbar">
-    <div class="tab active" data-tab="candidates" onclick="switchTab('candidates')">
-      <!-- document icon -->
-      <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-      <div class="tab-label">Review<span id="b-candidates" class="tab-count hide">0</span></div>
+  <!-- Chat (replaces detail when active) -->
+  <section id="chat-pane">
+    <div class="chat-messages" id="chat-messages">
+      <div class="empty-state">
+        <div class="icon">💬</div>
+        <div>Ask anything about your vault.</div>
+      </div>
     </div>
-    <div class="tab" data-tab="policy" onclick="switchTab('policy')">
-      <!-- shield/policy icon -->
-      <svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-      <div class="tab-label">Policy<span id="b-policy" class="tab-count hide">0</span></div>
+    <div class="chat-input-bar">
+      <textarea id="chat-input" placeholder="Ask about a client, a meeting, anything…" rows="1" onkeydown="chatKey(event)"></textarea>
+      <button onclick="sendChat()">Send</button>
     </div>
-    <div class="tab" data-tab="tickets" onclick="switchTab('tickets')">
-      <!-- tag icon -->
-      <svg viewBox="0 0 24 24"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
-      <div class="tab-label">Tickets<span id="b-tickets" class="tab-count hide">0</span></div>
-    </div>
-    <div class="tab" data-tab="errors" onclick="switchTab('errors')">
-      <!-- alert triangle -->
-      <svg viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-      <div class="tab-label">Errors<span id="b-errors" class="tab-count hide">0</span></div>
-    </div>
-    <div class="tab" data-tab="contacts" onclick="switchTab('contacts')">
-      <!-- person icon -->
-      <svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-      <div class="tab-label">Contacts<span id="b-contacts" class="tab-count hide">0</span></div>
-    </div>
-    <div class="tab" data-tab="chat" onclick="switchTab('chat')">
-      <!-- message icon -->
-      <svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-      <div class="tab-label">Chat</div>
-    </div>
-  </div>
-
+  </section>
 </div>
-
-<!-- Detail sheet -->
-<div id="detail-sheet">
-  <div class="sheet-handle"></div>
-  <div class="sheet-header">
-    <button class="sheet-back" onclick="closeSheet()">← Back</button>
-    <div class="sheet-title" id="sheet-title"></div>
-  </div>
-  <div class="sheet-body">
-    <div class="sheet-prose" id="sheet-prose"></div>
-  </div>
-  <div class="sheet-actions">
-    <div class="action-row" id="sheet-actions"></div>
-  </div>
-</div>
-
-<!-- Settings sheet -->
-<div id="settings-sheet" onclick="if(event.target===this)closeSettings()">
-  <div class="settings-panel">
-    <div class="settings-title">Settings</div>
-    <div class="settings-row">
-      <div class="settings-label">GitHub Token</div>
-      <input class="settings-input" type="password" id="cfg-github" placeholder="ghp_...">
-    </div>
-    <div class="settings-row">
-      <div class="settings-label">Vault Repo</div>
-      <input class="settings-input" type="text" id="cfg-repo">
-    </div>
-    <div class="settings-row">
-      <div class="settings-label">Claude API Key</div>
-      <input class="settings-input" type="password" id="cfg-claude" placeholder="sk-ant-...">
-    </div>
-    <button class="btn-primary" onclick="saveSettings()">Save</button>
-    <button style="background:none;border:none;color:var(--muted);font-size:14px;cursor:pointer;width:100%;padding:12px 0 0;font-family:var(--font)" onclick="closeSettings()">Cancel</button>
-  </div>
-</div>
-
-<div id="toast"></div>
 
 <script>
-// ── Config ────────────────────────────────────────────────────────────────────
-const FOLDERS = {
-  candidates: 'Help Docs/candidates',
-  policy:     'Review/policy-review',
-  tickets:    'Inbox/tickets',
-  errors:     'Review/errors',
-  contacts:   'Review/new-contacts',
-};
-const APPROVE_DEST = { candidates: 'Help Docs/drafts', policy: 'Help Docs/drafts' };
-const STRIP_CLASS  = { candidates:'strip-gold', policy:'strip-red', tickets:'strip-blue', errors:'strip-red', contacts:'strip-teal' };
+// ───────────── Config ─────────────
+const REPO = 'stephaniehofhenke/string-marketing-vault';
+const GH_API = `https://api.github.com/repos/${REPO}/contents`;
+const CLAUDE_API = 'https://api.anthropic.com/v1/messages';
+const CLAUDE_MODEL = 'claude-sonnet-4-5';
 
-let TOKEN = '', REPO = '', CLAUDE_KEY = '';
-let currentTab = 'candidates';
-let currentFile = null;
-let chatHistory = [];
+// ───────────── State ─────────────
+let GH_TOKEN = localStorage.getItem('gh_token') || '';
+let ANTHROPIC_KEY = localStorage.getItem('anthropic_key') || '';
+let CURRENT_VIEW = '';
+let CURRENT_RECORDS = [];   // [{name, path, frontmatter, body, raw}]
+let CURRENT_SELECTED = null;
+let CACHE = {};             // view → records
 
-// ── Init ──────────────────────────────────────────────────────────────────────
-window.onload = () => {
-  TOKEN      = ls('sb_github') || '';
-  REPO       = ls('sb_repo')   || 'stephaniehofhenke/string-marketing-vault';
-  CLAUDE_KEY = ls('sb_claude') || '';
-  if (TOKEN && REPO) {
-    document.getElementById('setup').style.display = 'none';
-    document.getElementById('app').style.display = 'flex';
-    document.getElementById('app').style.flexDirection = 'column';
-    refreshAll();
-  } else {
-    document.getElementById('s-repo').value = REPO;
-  }
-};
-
-async function saveSetup() {
-  const t = v('s-github'), r = v('s-repo'), c = v('s-claude');
-  if (!t || !r) { err('setup-error', 'GitHub token and repo are required.'); return; }
-  const ok = await testGitHub(t, r);
-  if (!ok) { err('setup-error', 'Cannot connect to GitHub. Check your token.'); return; }
-  TOKEN = t; REPO = r; CLAUDE_KEY = c;
-  sls('sb_github', t); sls('sb_repo', r); sls('sb_claude', c);
-  document.getElementById('setup').style.display = 'none';
-  document.getElementById('app').style.display = 'flex';
-  document.getElementById('app').style.flexDirection = 'column';
-  refreshAll();
+// ───────────── Bootstrap ─────────────
+function saveSetup(){
+  const gh=document.getElementById('setup-gh').value.trim();
+  const ak=document.getElementById('setup-anthropic').value.trim();
+  if(!gh||!ak){alert('Both tokens required');return}
+  localStorage.setItem('gh_token',gh);
+  localStorage.setItem('anthropic_key',ak);
+  GH_TOKEN=gh;ANTHROPIC_KEY=ak;
+  document.getElementById('setup').style.display='none';
+  init();
 }
 
-// ── Settings ──────────────────────────────────────────────────────────────────
-function openSettings() {
-  document.getElementById('cfg-github').value = TOKEN;
-  document.getElementById('cfg-repo').value   = REPO;
-  document.getElementById('cfg-claude').value = CLAUDE_KEY;
-  document.getElementById('settings-sheet').classList.add('open');
-}
-function closeSettings() { document.getElementById('settings-sheet').classList.remove('open'); }
-async function saveSettings() {
-  const t = v('cfg-github'), r = v('cfg-repo'), c = v('cfg-claude');
-  TOKEN = t; REPO = r; CLAUDE_KEY = c;
-  sls('sb_github', t); sls('sb_repo', r); sls('sb_claude', c);
-  closeSettings();
-  showToast('Settings saved');
-  refreshAll();
-}
-
-// ── GitHub API ────────────────────────────────────────────────────────────────
-async function gh(path, opts = {}) {
-  const url = path.startsWith('http') ? path : `https://api.github.com${path}`;
-  const res = await fetch(url, {
-    ...opts,
-    headers: { 'Authorization': `token ${TOKEN}`, 'Accept': 'application/vnd.github+json',
-               'X-GitHub-Api-Version': '2022-11-28', ...(opts.headers || {}) }
+function init(){
+  if(!GH_TOKEN||!ANTHROPIC_KEY){return}
+  document.getElementById('setup').style.display='none';
+  document.getElementById('app').classList.add('ready');
+  document.querySelectorAll('.nav-item').forEach(el=>{
+    el.addEventListener('click',()=>switchView(el.dataset.view));
   });
-  return { ok: res.ok, status: res.status, data: res.ok ? await res.json() : null };
+  switchView('Clients');
+  refreshCounts();
 }
 
-async function testGitHub(t, r) {
-  const res = await fetch(`https://api.github.com/repos/${r}`,
-    { headers: { 'Authorization': `token ${t}`, 'Accept': 'application/vnd.github+json' } });
-  return res.ok;
-}
-
-async function listFolder(folder) {
-  const r = await gh(`/repos/${REPO}/contents/${encodeURIComponent(folder)}`);
-  if (!r.ok || !Array.isArray(r.data)) return [];
-  return r.data.filter(f => f.name.endsWith('.md'));
-}
-
-async function readFile(path) {
-  const r = await gh(`/repos/${REPO}/contents/${encodeURIComponent(path)}`);
-  return r.ok ? r.data : null;
-}
-
-async function deleteFile(path, sha, msg) {
-  const r = await gh(`/repos/${REPO}/contents/${encodeURIComponent(path)}`, {
-    method: 'DELETE', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message: msg, sha })
+// ───────────── GitHub ─────────────
+async function gh(path){
+  const r = await fetch(`${GH_API}/${encodeURI(path)}`,{
+    headers:{Authorization:`Bearer ${GH_TOKEN}`,Accept:'application/vnd.github.v3+json'}
   });
-  return r.ok;
+  if(!r.ok)throw new Error(`GH ${r.status} ${path}`);
+  return r.json();
 }
 
-async function putFile(path, content, msg, sha) {
-  const body = { message: msg, content };
-  if (sha) body.sha = sha;
-  const r = await gh(`/repos/${REPO}/contents/${encodeURIComponent(path)}`, {
-    method: 'PUT', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body)
+async function ghFile(path){
+  const data = await gh(path);
+  if(!data.content)return null;
+  // GitHub returns base64-encoded content; decode (handles utf-8)
+  const decoded = decodeURIComponent(escape(atob(data.content.replace(/\n/g,''))));
+  return {content:decoded, sha:data.sha, path:data.path};
+}
+
+// ───────────── Markdown / frontmatter ─────────────
+function parseFrontmatter(text){
+  const m = text.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
+  if(!m)return{frontmatter:{},body:text};
+  let fm={};
+  try{fm = jsyaml.load(m[1]) || {}}catch(e){fm={}}
+  return {frontmatter:fm, body:m[2]};
+}
+
+function renderMarkdown(body){
+  // Pre-process wikilinks before marked
+  let pre = body.replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g,(match,target,alias)=>{
+    const display = alias || target.split('/').pop();
+    return `<a href="#" class="wikilink" data-target="${encodeURIComponent(target)}">${display}</a>`;
   });
-  return r.ok;
+  const html = DOMPurify.sanitize(marked.parse(pre));
+  return html;
 }
 
-// ── Tabs ──────────────────────────────────────────────────────────────────────
-function switchTab(tab) {
-  document.querySelectorAll('.tab-content').forEach(el => el.style.display = 'none');
-  document.querySelectorAll('.tab').forEach(el => el.classList.toggle('active', el.dataset.tab === tab));
-  currentTab = tab;
-  if (tab === 'chat') {
-    document.getElementById('tab-chat').style.display = 'block';
-    document.getElementById('tab-chat').style.height = 'calc(100dvh - 52px - 60px)';
-    document.getElementById('screen').classList.add('locked');
-  } else {
-    document.getElementById(`tab-${tab}`).style.display = 'block';
-    document.getElementById('screen').classList.remove('locked');
-    loadTab(tab);
-  }
-}
-
-async function refreshAll() {
-  for (const t of ['candidates', 'policy', 'tickets', 'errors', 'contacts']) loadTabBadge(t);
-  if (currentTab !== 'chat') loadTab(currentTab);
-}
-
-async function loadTabBadge(tab) {
-  const files = await listFolder(FOLDERS[tab]);
-  const badge = document.getElementById(`b-${tab}`);
-  if (!badge) return;
-  badge.textContent = files.length;
-  badge.classList.toggle('hide', files.length === 0);
-}
-
-async function loadTab(tab) {
-  const el = document.getElementById(`list-${tab}`);
-  if (!el) return;
-  el.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
-  const files = await listFolder(FOLDERS[tab]);
-  renderList(tab, files, el);
-}
-
-function renderList(tab, files, el) {
-  if (!files.length) {
-    const msgs = { candidates: 'No candidates pending', policy: 'No policy items pending', tickets: 'No unmatched tickets', errors: 'No errors logged', contacts: 'No new contacts' };
-    el.innerHTML = `<div class="empty"><div class="empty-line"></div><div class="empty-title">${msgs[tab]}</div><div class="empty-sub">All clear</div></div>`;
-    return;
-  }
-  const strip = STRIP_CLASS[tab] || 'strip-teal';
-  el.innerHTML = files.map(f => {
-    const name  = f.name.replace('.md', '');
-    const parts = name.split('-');
-    const date  = parts.slice(0, 3).join('-');
-    const title = humanTitle(f.name);
-    return `<div class="card" onclick="openSheet('${esc(f.path)}','${esc(f.name)}')">
-      <div class="card-strip ${strip}"></div>
-      <div class="card-body">
-        <div class="card-title">${esc2(title)}</div>
-        <div class="card-date">${date}</div>
-      </div>
-      <div class="card-arrow">›</div>
-    </div>`;
-  }).join('');
-}
-
-// ── Detail sheet ──────────────────────────────────────────────────────────────
-async function openSheet(path, filename) {
-  currentFile = null;
-  document.getElementById('sheet-title').textContent = humanTitle(filename);
-  document.getElementById('sheet-prose').innerHTML = '<div class="loading"><div class="spinner"></div></div>';
-  document.getElementById('sheet-actions').innerHTML = '';
-  document.getElementById('detail-sheet').classList.add('open');
-
-  const file = await readFile(path);
-  if (!file) {
-    document.getElementById('sheet-prose').innerHTML = '<p style="color:var(--muted)">Could not load file.</p>';
-    return;
-  }
-  currentFile = { path, filename, sha: file.sha, content: file.content };
-  const raw = atob(file.content.replace(/\n/g, ''));
-  document.getElementById('sheet-prose').innerHTML = mdToHtml(raw);
-  buildSheetActions();
-}
-
-function closeSheet() { document.getElementById('detail-sheet').classList.remove('open'); }
-
-function buildSheetActions() {
-  const el = document.getElementById('sheet-actions');
-  if (currentTab === 'candidates' || currentTab === 'policy') {
-    const label = currentTab === 'policy' ? 'Approve & Publish' : 'Approve';
-    el.innerHTML = `
-      <button class="btn-action btn-approve" onclick="approveCandidate()">${label}</button>
-      <button class="btn-action btn-reject"  onclick="rejectCurrent()">Reject</button>`;
-  } else if (currentTab === 'errors') {
-    el.innerHTML = `
-      <button class="btn-action btn-approve" onclick="rejectCurrent()">Mark Resolved</button>
-      <button class="btn-action btn-neutral" onclick="closeSheet()">Close</button>`;
-  } else if (currentTab === 'tickets') {
-    el.innerHTML = `
-      <button class="btn-action btn-reject"  onclick="rejectCurrent()">Archive</button>
-      <button class="btn-action btn-neutral" onclick="closeSheet()">Close</button>`;
-  } else {
-    el.innerHTML = `
-      <button class="btn-action btn-reject"  onclick="rejectCurrent()">Dismiss</button>
-      <button class="btn-action btn-neutral" onclick="closeSheet()">Close</button>`;
-  }
-}
-
-async function approveCandidate() {
-  if (!currentFile) return;
-  showToast('Moving to drafts…');
-  const ok = await putFile(`${APPROVE_DEST.candidates}/${currentFile.filename}`, currentFile.content, `Approved: ${currentFile.filename}`);
-  if (!ok) { showToast('Failed'); return; }
-  await deleteFile(currentFile.path, currentFile.sha, `Remove candidate: ${currentFile.filename}`);
-  showToast('Moved to Help Docs/drafts');
-  closeSheet(); loadTab(currentTab); loadTabBadge(currentTab);
-}
-
-async function rejectCurrent() {
-  if (!currentFile) return;
-  if (!confirm(`Remove "${humanTitle(currentFile.filename)}"?`)) return;
-  const ok = await deleteFile(currentFile.path, currentFile.sha, `Rejected: ${currentFile.filename}`);
-  if (ok) { showToast('Removed'); closeSheet(); loadTab(currentTab); loadTabBadge(currentTab); }
-  else showToast('Failed');
-}
-
-// ── Chat ──────────────────────────────────────────────────────────────────────
-const CHAT_SYSTEM = `You are STRING Brain — the AI assistant for STRING Marketing, a digital marketing agency serving nutrition and wellness private practices.
-
-You help Stephanie (the founder) with client context, drafting emails and content, reviewing help docs, understanding vault data, and general business decisions.
-
-STRING services: STRINGConnect ($97-197/mo GHL platform), STRINGFlow ($59/mo), Connected Practice Audit ($1,500), Connected Practice Build, Digital Elevation (website).
-
-Be concise, direct, and actionable. No filler. When drafting content, produce it ready to copy-paste.`;
-
-async function sendChat() {
-  const input = document.getElementById('chat-input');
-  const msg   = input.value.trim();
-  if (!msg) return;
-  input.value = '';
-  input.style.height = '';
-  appendBubble('user', msg);
-  chatHistory.push({ role: 'user', content: msg });
-  document.querySelector('.chat-intro')?.remove();
-
-  if (!CLAUDE_KEY) {
-    appendBubble('assistant', 'No Claude API key — add it in Settings to use chat.');
-    return;
-  }
-
-  const typing = appendBubble('assistant', '…', true);
-  try {
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'x-api-key': CLAUDE_KEY,
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true',
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ model: 'claude-haiku-4-5', max_tokens: 1500, system: CHAT_SYSTEM, messages: chatHistory })
+function bindWikilinks(container){
+  container.querySelectorAll('a.wikilink').forEach(a=>{
+    a.addEventListener('click',e=>{
+      e.preventDefault();
+      const target = decodeURIComponent(a.dataset.target);
+      navigateWikilink(target);
     });
-    const data  = await res.json();
-    const reply = data.content?.[0]?.text || 'No response.';
-    typing.querySelector('.bubble-inner').innerHTML = mdToHtml(reply);
-    chatHistory.push({ role: 'assistant', content: reply });
-  } catch (e) {
-    typing.querySelector('.bubble-inner').textContent = 'Error: ' + e.message;
+  });
+}
+
+async function navigateWikilink(target){
+  // target like "Clients/Diabetes Digital/Diabetes Digital" or "Contacts/Name/Name"
+  const parts = target.split('/');
+  if(parts.length<2){alert('Invalid wikilink: '+target);return}
+  const folder = parts[0]; // Clients, Contacts, etc.
+  const name = parts[1];
+  switchView(folder);
+  // Wait for list to load, then select
+  setTimeout(()=>{selectRecord(name)},400);
+}
+
+// ───────────── Views ─────────────
+const VIEWS = {
+  'Clients':    {label:'Clients',  type:'entity'},
+  'Contacts':   {label:'Contacts', type:'entity'},
+  'Leads':      {label:'Leads',    type:'entity'},
+  'Projects':   {label:'Projects', type:'entity'},
+  'Team':       {label:'Team',     type:'entity'},
+  'Services':   {label:'Services', type:'entity-flat'},
+  'Systems':    {label:'Systems',  type:'entity-flat'},
+  'review-people': {label:'People review queue', type:'people-queue'},
+  'review-qa':  {label:'Q&A candidates', type:'help-docs'},
+  'review-docs':{label:'Documentation', type:'documentation'},
+  'review-errors':{label:'Errors', type:'errors'},
+  'home':       {label:'Home', type:'home'},
+  'chat':       {label:'Chat', type:'chat'},
+  'settings':   {label:'Settings', type:'settings'},
+  'finances':   {label:'Finances', type:'finances'},
+  'hr':         {label:'HR', type:'hr'},
+};
+
+async function switchView(v){
+  CURRENT_VIEW = v;
+  const cfg = VIEWS[v];
+  if(!cfg){return}
+  document.querySelectorAll('.nav-item').forEach(el=>{
+    el.classList.toggle('active',el.dataset.view===v);
+  });
+  document.getElementById('list-title').innerHTML = `${cfg.label} <small id="list-count"></small>`;
+  document.getElementById('chat-pane').classList.remove('active');
+  document.getElementById('detail-pane').style.display='block';
+
+  if(cfg.type==='chat'){
+    document.getElementById('chat-pane').classList.add('active');
+    document.getElementById('detail-pane').style.display='none';
+    return;
   }
-  scrollChat();
+  if(cfg.type==='settings'){renderSettings();return}
+  if(cfg.type==='home'){renderHome();return}
+  if(cfg.type==='entity'){await loadEntityList(v)}
+  else if(cfg.type==='entity-flat'){await loadEntityFlat(v)}
+  else if(cfg.type==='people-queue'){await loadPeopleQueue()}
+  else if(cfg.type==='help-docs'){await loadFolderList('Help Docs/candidates')}
+  else if(cfg.type==='documentation'){await loadFolderList('Documentation/candidates')}
+  else if(cfg.type==='errors'){await loadFolderList('Review/errors')}
+  else{renderEmpty(cfg.label+' coming soon')}
 }
 
-function appendBubble(role, text, isTyping = false) {
-  const msgs = document.getElementById('chat-messages');
-  const now  = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  const el   = document.createElement('div');
-  el.className = `chat-bubble ${role}`;
-  el.innerHTML = `<div class="bubble-inner">${isTyping ? text : mdToHtml(text)}</div><div class="bubble-time">${now}</div>`;
-  msgs.appendChild(el);
-  scrollChat();
-  return el;
+async function loadEntityList(folder){
+  if(CACHE[folder]){
+    CURRENT_RECORDS=CACHE[folder];renderList();return;
+  }
+  const items = document.getElementById('list-items');
+  items.innerHTML = '<div class="loading"><span class="spinner"></span>&nbsp; Loading…</div>';
+  try{
+    const dir = await gh(folder);
+    const subfolders = dir.filter(e=>e.type==='dir'&&!e.name.startsWith('_')&&!e.name.startsWith('.'));
+    CURRENT_RECORDS = subfolders.map(sf=>({
+      name: sf.name, path:`${folder}/${sf.name}/${sf.name}.md`, folder, loaded:false
+    }));
+    CACHE[folder] = CURRENT_RECORDS;
+    renderList();
+  }catch(e){
+    items.innerHTML = `<div class="empty-state"><div>Error: ${e.message}</div></div>`;
+  }
 }
 
-function scrollChat() { const m = document.getElementById('chat-messages'); m.scrollTop = m.scrollHeight; }
-function sendSuggestion(el) { document.getElementById('chat-input').value = el.textContent; sendChat(); }
-function handleChatKey(e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); } }
-function autoResize(el) { el.style.height = ''; el.style.height = Math.min(el.scrollHeight, 120) + 'px'; }
-
-// ── Markdown ──────────────────────────────────────────────────────────────────
-function mdToHtml(md) {
-  let s = md.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-  s = s.replace(/```[\s\S]*?```/g, m => `<pre>${m.slice(3,-3).trim()}</pre>`);
-  s = s.replace(/`([^`]+)`/g, '<code>$1</code>');
-  s = s.replace(/^#### (.+)$/gm, '<h3>$1</h3>');
-  s = s.replace(/^### (.+)$/gm, '<h3>$1</h3>');
-  s = s.replace(/^## (.+)$/gm, '<h2>$1</h2>');
-  s = s.replace(/^# (.+)$/gm, '<h1>$1</h1>');
-  s = s.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
-  s = s.replace(/\*([^*]+)\*/g, '<em>$1</em>');
-  s = s.replace(/^---+$/gm, '<hr>');
-  s = s.replace(/^\- (.+)$/gm, '<li>$1</li>');
-  s = s.replace(/(<li>[\s\S]*?<\/li>)/g, '<ul>$1</ul>');
-  s = s.replace(/^(---\n[\s\S]*?\n---)/m, '<pre style="opacity:0.35;font-size:11px">$1</pre>');
-  s = s.replace(/\n/g, '<br>');
-  return s;
+async function loadEntityFlat(folder){
+  if(CACHE[folder]){CURRENT_RECORDS=CACHE[folder];renderList();return}
+  const items = document.getElementById('list-items');
+  items.innerHTML = '<div class="loading"><span class="spinner"></span>&nbsp; Loading…</div>';
+  try{
+    const dir = await gh(folder);
+    const files = dir.filter(e=>e.type==='file'&&e.name.endsWith('.md')&&!e.name.startsWith('_')&&e.name!=='README.md');
+    CURRENT_RECORDS = files.map(f=>({
+      name: f.name.replace(/\.md$/,''), path:f.path, folder, loaded:false
+    }));
+    CACHE[folder] = CURRENT_RECORDS;
+    renderList();
+  }catch(e){
+    items.innerHTML = `<div class="empty-state"><div>Error: ${e.message}</div></div>`;
+  }
 }
 
-// ── Toast ─────────────────────────────────────────────────────────────────────
-let toastTimer;
-function showToast(msg) {
-  const el = document.getElementById('toast');
-  el.textContent = msg;
-  el.classList.add('show');
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => el.classList.remove('show'), 2200);
+function renderList(){
+  const items = document.getElementById('list-items');
+  const q = document.getElementById('search').value.toLowerCase();
+  const filtered = CURRENT_RECORDS.filter(r=>!q||r.name.toLowerCase().includes(q));
+  document.getElementById('list-count').textContent = filtered.length;
+  if(filtered.length===0){items.innerHTML='<div class="empty-state"><div>No matches.</div></div>';return}
+  items.innerHTML = filtered.map(r=>`
+    <div class="list-item" data-name="${r.name.replace(/"/g,'&quot;')}" onclick="selectRecord('${r.name.replace(/'/g,"\\'")}')">
+      <div class="list-item-title">${r.name}</div>
+    </div>
+  `).join('');
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-function humanTitle(filename) {
-  return filename.replace('.md', '')
-    .replace(/^\d{4}-\d{2}-\d{2}-\d+-?/, '')
-    .replace(/-/g, ' ')
-    .replace(/\b\w/g, c => c.toUpperCase()) || filename;
+function filterList(){renderList()}
+
+async function selectRecord(name){
+  const rec = CURRENT_RECORDS.find(r=>r.name===name);
+  if(!rec){console.warn('not found:',name);return}
+  document.querySelectorAll('.list-item').forEach(el=>el.classList.toggle('active',el.dataset.name===name));
+  CURRENT_SELECTED = rec;
+  const pane = document.getElementById('detail-pane');
+  pane.innerHTML = '<div class="loading"><span class="spinner"></span>&nbsp; Loading…</div>';
+  try{
+    const file = await ghFile(rec.path);
+    if(!file){pane.innerHTML='<div class="empty-state">File not found.</div>';return}
+    const parsed = parseFrontmatter(file.content);
+    rec.frontmatter = parsed.frontmatter;
+    rec.body = parsed.body;
+    rec.sha = file.sha;
+    renderDetail(rec);
+  }catch(e){
+    pane.innerHTML = `<div class="empty-state">Error loading: ${e.message}</div>`;
+  }
 }
-function esc(s)   { return (s||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'"); }
-function esc2(s)  { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;'); }
-function v(id)    { return document.getElementById(id)?.value?.trim() || ''; }
-function ls(k)    { try { return localStorage.getItem(k); } catch { return ''; } }
-function sls(k,v) { try { localStorage.setItem(k,v); } catch {} }
-function err(id, msg) { const el = document.getElementById(id); if (el) { el.textContent = msg; el.style.display = 'block'; } }
+
+function renderDetail(rec){
+  const fm = rec.frontmatter || {};
+  const status = fm.status || '';
+  const statusBadge = status ? `<span class="badge-pill badge-${status}">${status}</span>` : '';
+  const quicklinks = renderQuickLinks(fm);
+  const meta = [];
+  if(fm.referred_by) meta.push(`Referred by: ${escapeHtml(fm.referred_by)}`);
+  if(fm.timezone) meta.push(`TZ: ${escapeHtml(fm.timezone)}`);
+  if(fm.last_context_update) meta.push(`Last refresh: ${escapeHtml(fm.last_context_update)}`);
+  if(fm.last_updated) meta.push(`Last updated: ${escapeHtml(fm.last_updated)}`);
+
+  const pane = document.getElementById('detail-pane');
+  pane.innerHTML = `
+    <div class="detail-header">
+      <h1>${escapeHtml(rec.name)} ${statusBadge}</h1>
+      <div class="detail-meta">${meta.join(' · ')}</div>
+      ${quicklinks}
+    </div>
+    <div class="detail-body" id="detail-body">${renderMarkdown(rec.body || '_(empty record)_')}</div>
+  `;
+  bindWikilinks(pane);
+}
+
+function renderQuickLinks(fm){
+  const links = [];
+  if(fm.notion_url) links.push({icon:'🟢',label:'Notion',url:fm.notion_url});
+  if(fm.teamwork_url) links.push({icon:'🔵',label:'Teamwork',url:fm.teamwork_url});
+  if(fm.desk_url) links.push({icon:'🎫',label:'Desk',url:fm.desk_url});
+  if(fm.gdrive_folder_url) links.push({icon:'📁',label:'Drive',url:fm.gdrive_folder_url});
+  if(fm.figma_link) links.push({icon:'🎨',label:'Figma',url:fm.figma_link});
+  if(fm.stripe_customer_id) links.push({icon:'💳',label:'Stripe',url:`https://dashboard.stripe.com/customers/${fm.stripe_customer_id}`});
+  // Websites array
+  const websites = fm.websites || [];
+  websites.forEach(w=>{
+    const url = typeof w === 'string' ? w : w.url;
+    if(url) links.push({icon:'🌐',label:hostname(url),url:url});
+  });
+  // Email
+  if(fm.main_contact_email) links.push({icon:'✉️',label:'Email',url:`mailto:${fm.main_contact_email}`});
+  if(fm.email && !fm.main_contact_email) links.push({icon:'✉️',label:fm.email,url:`mailto:${fm.email}`});
+  if(links.length===0)return'';
+  return `<div class="quicklinks">${links.map(l=>`<a href="${escapeAttr(l.url)}" target="_blank" rel="noopener" class="qlink"><span class="icon">${l.icon}</span> ${escapeHtml(l.label)}</a>`).join('')}</div>`;
+}
+
+function hostname(url){try{return new URL(url).hostname.replace(/^www\./,'')}catch(e){return url}}
+
+// ───────────── Review People queue ─────────────
+async function loadPeopleQueue(){
+  const items = document.getElementById('list-items');
+  items.innerHTML = '<div class="loading"><span class="spinner"></span>&nbsp; Loading…</div>';
+  try{
+    const f = await ghFile('Review/people-queue.json');
+    const queue = JSON.parse(f.content);
+    CURRENT_RECORDS = queue.items.filter(i=>i.status==='pending');
+    const resolved = queue.items.filter(i=>i.status==='resolved');
+    document.getElementById('list-count').textContent = `${CURRENT_RECORDS.length} pending`;
+    items.innerHTML = '';
+
+    if(CURRENT_RECORDS.length){
+      items.innerHTML += '<div class="nav-header" style="padding:8px 18px;color:var(--muted)">Pending</div>';
+      CURRENT_RECORDS.forEach(it=>{
+        items.innerHTML += renderPeopleQueueCard(it,false);
+      });
+    }
+    if(resolved.length){
+      items.innerHTML += '<div class="nav-header" style="padding:14px 18px 4px;color:var(--muted)">Recently resolved</div>';
+      resolved.slice(0,10).forEach(it=>{
+        items.innerHTML += renderPeopleQueueCard(it,true);
+      });
+    }
+    document.getElementById('detail-pane').innerHTML = `
+      <div class="detail-header">
+        <h1>People Review Queue</h1>
+        <div class="detail-meta">${queue.items.filter(i=>i.status==='pending').length} pending · ${queue.items.filter(i=>i.status==='resolved').length} resolved</div>
+      </div>
+      <div class="detail-body">
+        <p>Items needing your classification, attention, or decision. Click any card in the left pane to expand.</p>
+        <p><em>Bulk actions on sub-items, inline edit, and conflict detection are Phase 2c features per the master plan.</em></p>
+      </div>
+    `;
+  }catch(e){
+    items.innerHTML = `<div class="empty-state"><div>${e.message}</div></div>`;
+  }
+}
+
+function renderPeopleQueueCard(it,resolved){
+  const items_inner = (it.items||[]).map(si=>`
+    <div class="review-sub-item">
+      <div><strong>${escapeHtml(si.name||'(?)')}</strong>${si.email?` · ${escapeHtml(si.email)}`:''}${si.likely_client?` → ${escapeHtml(si.likely_client)}`:''}${si.context?` <em>${escapeHtml(si.context)}</em>`:''}${si.missing?` <em>missing: ${escapeHtml(si.missing)}</em>`:''}</div>
+    </div>
+  `).join('');
+  return `
+    <div class="review-card ${resolved?'status-resolved':''}" style="margin:8px 18px">
+      <div class="review-card-header">
+        <div class="review-card-title">${escapeHtml(it.title)}</div>
+        <div class="review-card-type">${escapeHtml(it.type)}</div>
+      </div>
+      <div class="review-card-desc">${escapeHtml(it.description||'')}</div>
+      ${items_inner?'<div class="review-card-items">'+items_inner+'</div>':''}
+      ${it.resolution?'<div style="font-size:11px;color:var(--muted)"><strong>Resolution:</strong> '+escapeHtml(it.resolution)+'</div>':''}
+    </div>
+  `;
+}
+
+// ───────────── Generic folder list (for Help Docs candidates, etc.) ─────────────
+async function loadFolderList(path){
+  const items = document.getElementById('list-items');
+  items.innerHTML = '<div class="loading"><span class="spinner"></span>&nbsp; Loading…</div>';
+  try{
+    const dir = await gh(path);
+    const files = dir.filter(e=>e.type==='file'&&e.name.endsWith('.md'));
+    CURRENT_RECORDS = files.map(f=>({name:f.name.replace(/\.md$/,''),path:f.path,folder:path,loaded:false}));
+    document.getElementById('list-count').textContent = CURRENT_RECORDS.length;
+    if(CURRENT_RECORDS.length===0){
+      items.innerHTML = '<div class="empty-state"><div class="icon">📭</div><div>No items.</div></div>';
+      return;
+    }
+    renderList();
+  }catch(e){
+    items.innerHTML = `<div class="empty-state"><div>${e.message}</div></div>`;
+  }
+}
+
+// ───────────── Home ─────────────
+async function renderHome(){
+  const items = document.getElementById('list-items');
+  items.innerHTML = '<div class="loading"><span class="spinner"></span>&nbsp; Loading…</div>';
+
+  // Get recent commits for activity feed
+  try{
+    const r = await fetch(`https://api.github.com/repos/${REPO}/commits?per_page=10`,
+      {headers:{Authorization:`Bearer ${GH_TOKEN}`}});
+    const commits = await r.json();
+    items.innerHTML = '<div class="nav-header" style="padding:10px 18px;color:var(--muted)">Recent activity</div>';
+    commits.forEach(c=>{
+      items.innerHTML += `
+        <div class="list-item">
+          <div class="list-item-title" style="font-size:12px">${escapeHtml((c.commit.message||'').split('\n')[0].slice(0,80))}</div>
+          <div class="list-item-sub">${new Date(c.commit.author.date).toLocaleString()}</div>
+        </div>
+      `;
+    });
+    document.getElementById('list-count').textContent = `${commits.length} commits`;
+  }catch(e){
+    items.innerHTML = `<div class="empty-state"><div>${e.message}</div></div>`;
+  }
+
+  document.getElementById('detail-pane').innerHTML = `
+    <div class="detail-header"><h1>STRING Brain — Home</h1><div class="detail-meta">Phase 3 in progress</div></div>
+    <div class="detail-body">
+      <p>Welcome. The system is currently processing Phase 3 (Client Context Agent + meeting reprocess + Fathom backfill).</p>
+      <h2>What's where</h2>
+      <ul>
+        <li><strong>Records</strong> — every entity in your vault, browseable. Click any record to see Quick Links and full content.</li>
+        <li><strong>Review</strong> — items needing your decision. Start here when you have time.</li>
+        <li><strong>Chat</strong> — ask anything; Claude pulls context from your vault.</li>
+        <li><strong>Admin</strong> — Finances + HR are admin-only views (you only).</li>
+      </ul>
+      <h2>Quick Links throughout</h2>
+      <p>Every client record renders clickable buttons in the header (Notion · Teamwork · Desk · Drive · Website · Email) based on its frontmatter. Updated via STRINGConnect automations (Phase 4) once a contract is signed.</p>
+      <h2>Background jobs running</h2>
+      <p>Meeting reprocess (~514 files) and Fathom gap pull are running in N8N. Live updates flow into Obsidian via the github-sync plugin every 2 minutes.</p>
+    </div>
+  `;
+}
+
+// ───────────── Settings ─────────────
+function renderSettings(){
+  document.getElementById('list-items').innerHTML = '';
+  document.getElementById('list-count').textContent = '';
+  document.getElementById('detail-pane').innerHTML = `
+    <div class="detail-header"><h1>Settings</h1></div>
+    <div class="detail-body">
+      <div class="settings-form">
+        <div class="field">
+          <label>GitHub Token</label>
+          <input type="password" value="${escapeAttr(GH_TOKEN)}" id="set-gh">
+        </div>
+        <div class="field">
+          <label>Claude API Key</label>
+          <input type="password" value="${escapeAttr(ANTHROPIC_KEY)}" id="set-anth">
+        </div>
+        <button class="btn-sm btn-primary" style="margin-top:14px" onclick="updateTokens()">Save</button>
+        <button class="btn-sm" style="margin-top:14px;margin-left:6px" onclick="clearCache()">Clear cache</button>
+        <button class="btn-sm btn-danger" style="margin-top:14px;margin-left:6px" onclick="resetSetup()">Sign out</button>
+      </div>
+    </div>
+  `;
+}
+
+function updateTokens(){
+  GH_TOKEN = document.getElementById('set-gh').value.trim();
+  ANTHROPIC_KEY = document.getElementById('set-anth').value.trim();
+  localStorage.setItem('gh_token',GH_TOKEN);
+  localStorage.setItem('anthropic_key',ANTHROPIC_KEY);
+  CACHE = {};
+  alert('Saved');
+}
+
+function clearCache(){CACHE={};alert('Cache cleared')}
+function resetSetup(){if(!confirm('Sign out?'))return;localStorage.clear();location.reload()}
+
+// ───────────── Chat ─────────────
+const CHAT_HISTORY = [];
+
+function chatKey(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendChat()}}
+
+async function sendChat(){
+  const ta = document.getElementById('chat-input');
+  const text = ta.value.trim();
+  if(!text)return;
+  ta.value='';
+
+  // Build context: include CURRENT_SELECTED record if any
+  let contextNote = '';
+  if(CURRENT_SELECTED && CURRENT_SELECTED.body){
+    contextNote = `\n\nContext — currently viewing ${CURRENT_VIEW}/${CURRENT_SELECTED.name}:\n${CURRENT_SELECTED.body.slice(0,3000)}`;
+  }
+
+  CHAT_HISTORY.push({role:'user',content:text});
+  renderChat();
+
+  const systemPrompt = `You are an assistant embedded in STRING Marketing's "STRING Brain" — a Claude-powered second brain built on top of an Obsidian vault. The vault contains records for Clients, Contacts, Leads, Team, Projects, Systems, and Services, plus meeting notes and tickets. The user (Stephanie) browses the vault through this dashboard. Be concise. Use markdown. When referencing entities, use the canonical name. If asked about a specific record, the user's current selection is provided in the context below.${contextNote}`;
+
+  try{
+    const r = await fetch(CLAUDE_API,{
+      method:'POST',
+      headers:{
+        'x-api-key':ANTHROPIC_KEY,
+        'anthropic-version':'2023-06-01',
+        'content-type':'application/json',
+        'anthropic-dangerous-direct-browser-access':'true'
+      },
+      body:JSON.stringify({
+        model:CLAUDE_MODEL,
+        max_tokens:1500,
+        system:systemPrompt,
+        messages:CHAT_HISTORY
+      })
+    });
+    if(!r.ok){
+      const err = await r.text();
+      CHAT_HISTORY.push({role:'assistant',content:`Error: ${err.slice(0,200)}`});
+    }else{
+      const data = await r.json();
+      const reply = data.content?.[0]?.text || '(no response)';
+      CHAT_HISTORY.push({role:'assistant',content:reply});
+    }
+  }catch(e){
+    CHAT_HISTORY.push({role:'assistant',content:`Error: ${e.message}`});
+  }
+  renderChat();
+}
+
+function renderChat(){
+  const cm = document.getElementById('chat-messages');
+  cm.innerHTML = CHAT_HISTORY.map(m=>{
+    const role = m.role==='user'?'You':'Claude';
+    return `<div class="chat-msg ${m.role}"><div class="role">${role}</div><div class="bubble">${DOMPurify.sanitize(marked.parse(m.content))}</div></div>`;
+  }).join('');
+  cm.scrollTop = cm.scrollHeight;
+}
+
+// ───────────── Counts ─────────────
+async function refreshCounts(){
+  const folders = ['Clients','Contacts','Leads','Projects','Team'];
+  for(const f of folders){
+    try{
+      const dir = await gh(f);
+      const count = dir.filter(e=>e.type==='dir'&&!e.name.startsWith('_')&&!e.name.startsWith('.')).length;
+      document.getElementById('badge-'+f).textContent = count;
+    }catch(e){
+      document.getElementById('badge-'+f).textContent = '?';
+    }
+  }
+  for(const f of ['Services','Systems']){
+    try{
+      const dir = await gh(f);
+      const count = dir.filter(e=>e.type==='file'&&e.name.endsWith('.md')&&!e.name.startsWith('_')&&e.name!=='README.md').length;
+      document.getElementById('badge-'+f).textContent = count;
+    }catch(e){
+      document.getElementById('badge-'+f).textContent = '?';
+    }
+  }
+  // People queue count
+  try{
+    const f = await ghFile('Review/people-queue.json');
+    const q = JSON.parse(f.content);
+    document.getElementById('badge-people').textContent = q.items.filter(i=>i.status==='pending').length;
+  }catch(e){}
+}
+
+function renderEmpty(msg){
+  document.getElementById('list-items').innerHTML = `<div class="empty-state">${escapeHtml(msg)}</div>`;
+  document.getElementById('detail-pane').innerHTML = `<div class="empty-state">${escapeHtml(msg)}</div>`;
+}
+
+function escapeHtml(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+function escapeAttr(s){return String(s||'').replace(/"/g,'&quot;').replace(/</g,'&lt;')}
+
+// ───────────── Boot ─────────────
+if(GH_TOKEN && ANTHROPIC_KEY){
+  init();
+}else{
+  document.getElementById('setup').style.display='flex';
+}
 </script>
 </body>
 </html>
