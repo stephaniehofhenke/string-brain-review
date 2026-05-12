@@ -177,6 +177,35 @@ a.broken-link{color:var(--red);text-decoration:line-through}
 /* ── Settings ── */
 .settings-form{max-width:500px;padding:20px 0}
 .settings-form .field input{font-family:Menlo,Monaco,monospace;font-size:12px}
+
+/* ── Review grid ── */
+.review-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;padding:20px 24px 40px}
+.review-tile{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px 14px;display:flex;flex-direction:column;gap:6px;cursor:pointer;transition:all 0.1s;position:relative}
+.review-tile:hover{border-color:var(--teal);box-shadow:var(--shadow-md)}
+.review-tile .tile-source{font-size:10px;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);font-weight:700;display:flex;justify-content:space-between;align-items:center}
+.review-tile .tile-source .source-pill{padding:2px 8px;background:var(--surface2);border-radius:6px}
+.review-tile .tile-source .source-pill.people{background:#e8f4f8;color:#1C5967}
+.review-tile .tile-source .source-pill.qa{background:#fff4d0;color:#a78700}
+.review-tile .tile-source .source-pill.docs{background:#e0e8f0;color:#3a4fa0}
+.review-tile .tile-source .source-pill.error{background:#f0e0e0;color:#a02020}
+.review-tile .tile-source .source-pill.inbox{background:#f5e8d8;color:#a85e1c}
+.review-tile .tile-source .source-pill.project{background:#dcf0e0;color:#3a7d44}
+.review-tile .tile-title{font-weight:700;font-size:14px;color:var(--text);line-height:1.3}
+.review-tile .tile-desc{font-size:12px;color:var(--text2);line-height:1.4;flex:1}
+.review-tile .tile-actions{display:flex;gap:6px;margin-top:4px}
+.review-tile .tile-actions button{font-size:11px;padding:4px 10px;border-radius:5px;background:var(--surface2);font-weight:600;color:var(--text)}
+.review-tile .tile-actions button.chat-btn{background:var(--teal);color:#fff}
+.review-tile .tile-actions button:hover{opacity:0.85}
+.review-summary{padding:14px 24px 6px;display:flex;flex-wrap:wrap;gap:10px;border-bottom:1px solid var(--border);background:var(--surface)}
+.summary-stat{font-size:12px;color:var(--text2);padding:4px 10px;background:var(--surface2);border-radius:14px;font-weight:600}
+.summary-stat strong{color:var(--text);margin-right:4px}
+
+/* ── Per-record chat button + side panel ── */
+.detail-header-actions{display:flex;gap:6px;margin-left:auto}
+.btn-chat-context{background:var(--teal);color:#fff;font-size:11px;padding:5px 12px;border-radius:6px;font-weight:600;display:inline-flex;align-items:center;gap:4px}
+.btn-chat-context:hover{opacity:0.9}
+.chat-context-banner{padding:8px 14px;background:var(--gold);color:var(--teal);font-size:11px;font-weight:600;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border)}
+.chat-context-banner button{font-size:10px;background:rgba(255,255,255,0.4);padding:2px 8px;border-radius:4px}
 </style>
 </head>
 <body>
@@ -223,6 +252,7 @@ a.broken-link{color:var(--red);text-decoration:line-through}
     </div>
     <div class="nav-section">
       <div class="nav-header">Review</div>
+      <div class="nav-item" data-view="review-all"><strong>All Items</strong> <span class="badge" id="badge-review-all">—</span></div>
       <div class="nav-item" data-view="review-people">People <span class="badge" id="badge-people">—</span></div>
       <div class="nav-item" data-view="review-qa">Q&amp;A (Help Docs)</div>
       <div class="nav-item" data-view="review-docs">Documentation</div>
@@ -506,6 +536,7 @@ const VIEWS = {
   'Team':       {label:'Team',     type:'entity'},
   'Services':   {label:'Services', type:'entity-flat'},
   'Systems':    {label:'Systems',  type:'entity-flat'},
+  'review-all': {label:'All Review Items', type:'review-all'},
   'review-people': {label:'People review queue', type:'people-queue'},
   'review-qa':  {label:'Q&A candidates', type:'help-docs'},
   'review-docs':{label:'Documentation', type:'documentation'},
@@ -542,6 +573,7 @@ async function switchView(v){
   if(cfg.type==='home'){renderHome();return}
   if(cfg.type==='entity'){await loadEntityList(v)}
   else if(cfg.type==='entity-flat'){await loadEntityFlat(v)}
+  else if(cfg.type==='review-all'){await loadReviewAll()}
   else if(cfg.type==='people-queue'){await loadPeopleQueue()}
   else if(cfg.type==='help-docs'){await loadFolderList('Help Docs/candidates')}
   else if(cfg.type==='documentation'){await loadFolderList('Documentation/candidates')}
@@ -822,7 +854,7 @@ function renderDetail(rec){
     crumbsInner += `<span class="sep">/</span><span style="opacity:0.7">${escapeHtml(rec._subType)}</span>`;
   }
   crumbsInner += `<span class="sep">/</span><span>${escapeHtml(rec.name)}</span>`;
-  const crumbs = `<div class="crumbs">${back}${crumbsInner}<button style="margin-left:auto" onclick="copyShareLink()" title="Copy shareable link">🔗</button></div>`;
+  const crumbs = `<div class="crumbs">${back}${crumbsInner}<div class="detail-header-actions"><button class="btn-chat-context" onclick='openChatWithRecord()'>💬 Chat about this</button><button onclick="copyShareLink()" title="Copy shareable link">🔗</button></div></div>`;
   pane.innerHTML = `
     ${crumbs}
     <div class="detail-header">
@@ -934,6 +966,210 @@ function renderPeopleQueueCard(it,resolved){
   `;
 }
 
+// ───────────── Unified Review (all sources) ─────────────
+let CHAT_CONTEXT_REF = null;  // {kind, title, body, path} — set when opening chat from a tile or detail
+
+async function loadReviewAll(){
+  const list = document.getElementById('list-items');
+  const pane = document.getElementById('detail-pane');
+  list.innerHTML = '<div class="loading"><span class="spinner"></span>&nbsp; Aggregating…</div>';
+  pane.innerHTML = `<div class="empty-state"><div class="icon">📋</div><div>Loading review items from every source…</div></div>`;
+
+  const items = [];
+  const errors = [];
+
+  // 1. People queue (pending only)
+  try{
+    const f = await ghFile('Review/people-queue.json');
+    const q = JSON.parse(f.content);
+    q.items.filter(i=>i.status==='pending').forEach(it=>{
+      items.push({
+        source:'people', source_label:'People',
+        title: it.title || '(untitled)',
+        desc: (it.description||'') + (it.items?.length ? ` — ${it.items.length} sub-item${it.items.length>1?'s':''}`:''),
+        action_target:{view:'review-people'},
+        ref:{kind:'people-queue-item', id:it.id, body:JSON.stringify(it,null,2), title:it.title}
+      });
+    });
+  }catch(e){errors.push('people-queue: '+e.message)}
+
+  // 2. Help-docs candidates
+  try{
+    const dir = await gh('Help Docs/candidates');
+    dir.filter(e=>e.type==='file'&&e.name.endsWith('.md')).forEach(f=>{
+      items.push({
+        source:'qa', source_label:'Q&A',
+        title:f.name.replace(/\.md$/,''),
+        desc:'Help-doc candidate flagged from a meeting or ticket',
+        action_target:{view:'review-qa', name:f.name.replace(/\.md$/,'')},
+        ref:{kind:'help-doc-candidate', path:f.path, title:f.name.replace(/\.md$/,'')}
+      });
+    });
+  }catch(e){/* folder may be empty */}
+
+  // 3. Documentation candidates
+  try{
+    const dir = await gh('Documentation/candidates');
+    dir.filter(e=>e.type==='file'&&e.name.endsWith('.md')).forEach(f=>{
+      items.push({
+        source:'docs', source_label:'Docs',
+        title:f.name.replace(/\.md$/,''),
+        desc:'Internal SOP / process documentation candidate',
+        action_target:{view:'review-docs', name:f.name.replace(/\.md$/,'')},
+        ref:{kind:'doc-candidate', path:f.path, title:f.name.replace(/\.md$/,'')}
+      });
+    });
+  }catch(e){}
+
+  // 4. Errors
+  try{
+    const dir = await gh('Review/errors');
+    dir.filter(e=>e.type==='file'&&e.name.endsWith('.md')).forEach(f=>{
+      items.push({
+        source:'error', source_label:'Error',
+        title:f.name.replace(/\.md$/,''),
+        desc:'Workflow / pipeline error',
+        action_target:{view:'review-errors', name:f.name.replace(/\.md$/,'')},
+        ref:{kind:'error', path:f.path, title:f.name.replace(/\.md$/,'')}
+      });
+    });
+  }catch(e){}
+
+  // 5. Unclassified meetings (Inbox/meetings)
+  try{
+    const dir = await gh('Inbox/meetings');
+    dir.filter(e=>e.type==='file'&&e.name.endsWith('.md')).forEach(f=>{
+      items.push({
+        source:'inbox', source_label:'Meeting',
+        title:f.name.replace(/\.md$/,''),
+        desc:'Unclassified meeting — pending reprocess routing',
+        action_target:{path:f.path},
+        ref:{kind:'inbox-meeting', path:f.path, title:f.name.replace(/\.md$/,'')}
+      });
+    });
+  }catch(e){}
+
+  // 6. Policy review
+  try{
+    const dir = await gh('Review/policy-review');
+    dir.filter(e=>e.type==='file'&&e.name.endsWith('.md')).forEach(f=>{
+      items.push({
+        source:'policy', source_label:'Policy',
+        title:f.name.replace(/\.md$/,''),
+        desc:'Decision conflict / policy review',
+        action_target:{view:'review-errors', name:f.name.replace(/\.md$/,'')},
+        ref:{kind:'policy', path:f.path, title:f.name.replace(/\.md$/,'')}
+      });
+    });
+  }catch(e){}
+
+  // 7. Projects flagged as STUCK or LATE (read from snapshot if available)
+  try{
+    const f = await ghFile('_scripts/data/notion-projects-snapshot.json');
+    const ps = JSON.parse(f.content);
+    (ps.projects||[]).forEach(p=>{
+      const flags = [];
+      if(p.project_health==='STUCK' || p.is_stuck) flags.push('stuck');
+      if(p.project_health==='Late' || p.is_late) flags.push('late');
+      if(flags.length){
+        items.push({
+          source:'project', source_label:'Project',
+          title:`${p.name} (${flags.join(' + ')})`,
+          desc:`Status: ${p.status||'?'} · Phase: ${(p.project_phase||[]).join(', ')||'—'}`,
+          action_target:{view:'Projects', name:p.name},
+          ref:{kind:'project-flag', name:p.name, body:JSON.stringify(p,null,2), title:p.name}
+        });
+      }
+    });
+  }catch(e){/* snapshot may not exist yet */}
+
+  // Render summary stats
+  const counts = items.reduce((acc,i)=>{acc[i.source]=(acc[i.source]||0)+1;return acc},{});
+  const summaryHtml = `
+    <div class="review-summary">
+      <div class="summary-stat"><strong>${items.length}</strong> total</div>
+      ${Object.entries(counts).map(([k,n])=>`<div class="summary-stat"><strong>${n}</strong>${k}</div>`).join('')}
+      ${errors.length?`<div class="summary-stat" style="background:#f0e0e0;color:#a02020"><strong>${errors.length}</strong> load error${errors.length>1?'s':''}</div>`:''}
+    </div>
+  `;
+
+  // Left pane shows source filter chips
+  const sources = ['all',...Object.keys(counts)];
+  list.innerHTML = `
+    <div style="padding:14px 18px;border-bottom:1px solid var(--border)">
+      <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);font-weight:700;margin-bottom:6px">Filter by source</div>
+      <div class="filter-bar" id="review-source-chips">
+        ${sources.map(s=>`<button class="chip ${s==='all'?'active':''}" data-source="${s}" onclick="filterReviewSource('${s}')">${escapeHtml(s)}<span class="ct">${s==='all'?items.length:(counts[s]||0)}</span></button>`).join('')}
+      </div>
+      <div style="margin-top:10px;font-size:11px;color:var(--muted)">Tip: click 💬 on any tile or row to chat about it with full context.</div>
+    </div>
+  `;
+  document.getElementById('list-count').textContent = items.length;
+
+  // Stash & render
+  window._REVIEW_ITEMS = items;
+  renderReviewGrid('all', summaryHtml);
+}
+
+function filterReviewSource(src){
+  document.querySelectorAll('#review-source-chips .chip').forEach(c=>c.classList.toggle('active',c.dataset.source===src));
+  // Summary header already built — re-render grid only
+  const summary = document.querySelector('#detail-pane .review-summary')?.outerHTML || '';
+  renderReviewGrid(src, summary);
+}
+
+function renderReviewGrid(src, summaryHtml){
+  const items = (window._REVIEW_ITEMS||[]).filter(i=>src==='all'||i.source===src);
+  const pane = document.getElementById('detail-pane');
+  if(!items.length){
+    pane.innerHTML = `${summaryHtml}<div class="empty-state" style="padding:60px 20px"><div class="icon">✓</div><div>Nothing to review in this category — nice.</div></div>`;
+    return;
+  }
+  pane.innerHTML = `
+    ${summaryHtml}
+    <div class="review-grid">
+      ${items.map((it,idx)=>tileHtml(it,idx)).join('')}
+    </div>
+  `;
+}
+
+function tileHtml(it,idx){
+  return `
+    <div class="review-tile">
+      <div class="tile-source">
+        <span class="source-pill ${escapeAttr(it.source)}">${escapeHtml(it.source_label)}</span>
+      </div>
+      <div class="tile-title">${escapeHtml(it.title)}</div>
+      <div class="tile-desc">${escapeHtml(it.desc||'')}</div>
+      <div class="tile-actions">
+        <button onclick='reviewTileOpen(${idx})'>Open</button>
+        <button class="chat-btn" onclick='reviewTileChat(${idx})'>💬 Chat</button>
+      </div>
+    </div>
+  `;
+}
+
+function reviewTileOpen(idx){
+  const it = (window._REVIEW_ITEMS||[])[idx];
+  if(!it) return;
+  const t = it.action_target;
+  if(t.path){
+    // open the file directly via wikilink
+    const target = t.path.replace(/\.md$/,'');
+    navigateWikilink(target);
+  } else if(t.view && t.name){
+    location.hash = '#/'+encodeURIComponent(t.view)+'/'+encodeURIComponent(t.name);
+  } else if(t.view){
+    location.hash = '#/'+encodeURIComponent(t.view);
+  }
+}
+
+function reviewTileChat(idx){
+  const it = (window._REVIEW_ITEMS||[])[idx];
+  if(!it) return;
+  openChatWithContext(it.ref);
+}
+
 // ───────────── Generic folder list (for Help Docs candidates, etc.) ─────────────
 async function loadFolderList(path){
   const items = document.getElementById('list-items');
@@ -1037,15 +1273,43 @@ const CHAT_HISTORY = [];
 
 function chatKey(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendChat()}}
 
+function openChatWithRecord(){
+  if(!CURRENT_SELECTED) return;
+  openChatWithContext({
+    kind: CURRENT_SELECTED._isSubFile ? CURRENT_SELECTED._subType : CURRENT_VIEW,
+    title: CURRENT_SELECTED.name,
+    body: CURRENT_SELECTED.body || '',
+    path: CURRENT_SELECTED.path || ''
+  });
+}
+
+function openChatWithContext(ref){
+  CHAT_CONTEXT_REF = ref;
+  // Show chat pane
+  document.getElementById('chat-pane').classList.add('active');
+  document.getElementById('detail-pane').style.display='none';
+  // Render banner + history
+  renderChat();
+  // Focus input
+  setTimeout(()=>document.getElementById('chat-input').focus(),50);
+}
+
+function clearChatContext(){
+  CHAT_CONTEXT_REF = null;
+  renderChat();
+}
+
 async function sendChat(){
   const ta = document.getElementById('chat-input');
   const text = ta.value.trim();
   if(!text)return;
   ta.value='';
 
-  // Build context: include CURRENT_SELECTED record if any
+  // Build context: prefer explicit CHAT_CONTEXT_REF, fall back to CURRENT_SELECTED
   let contextNote = '';
-  if(CURRENT_SELECTED && CURRENT_SELECTED.body){
+  if(CHAT_CONTEXT_REF){
+    contextNote = `\n\nContext — discussing ${CHAT_CONTEXT_REF.kind}: "${CHAT_CONTEXT_REF.title}"\nPath: ${CHAT_CONTEXT_REF.path||'(n/a)'}\n\n${(CHAT_CONTEXT_REF.body||'').slice(0,4000)}`;
+  } else if(CURRENT_SELECTED && CURRENT_SELECTED.body){
     contextNote = `\n\nContext — currently viewing ${CURRENT_VIEW}/${CURRENT_SELECTED.name}:\n${CURRENT_SELECTED.body.slice(0,3000)}`;
   }
 
@@ -1086,10 +1350,18 @@ async function sendChat(){
 
 function renderChat(){
   const cm = document.getElementById('chat-messages');
-  cm.innerHTML = CHAT_HISTORY.map(m=>{
+  let banner = '';
+  if(CHAT_CONTEXT_REF){
+    banner = `<div class="chat-context-banner">
+      <span>💬 Discussing: <strong>${escapeHtml(CHAT_CONTEXT_REF.title)}</strong> <span style="opacity:0.7">(${escapeHtml(CHAT_CONTEXT_REF.kind)})</span></span>
+      <button onclick="clearChatContext()">Clear context</button>
+    </div>`;
+  }
+  const msgs = CHAT_HISTORY.map(m=>{
     const role = m.role==='user'?'You':'Claude';
     return `<div class="chat-msg ${m.role}"><div class="role">${role}</div><div class="bubble">${DOMPurify.sanitize(marked.parse(m.content))}</div></div>`;
-  }).join('');
+  }).join('') || `<div class="empty-state"><div class="icon">💬</div><div>Ask anything${CHAT_CONTEXT_REF?' about this item':''}.</div></div>`;
+  cm.innerHTML = banner + msgs;
   cm.scrollTop = cm.scrollHeight;
 }
 
@@ -1115,11 +1387,23 @@ async function refreshCounts(){
     }
   }
   // People queue count
+  let peopleCount = 0;
   try{
     const f = await ghFile('Review/people-queue.json');
     const q = JSON.parse(f.content);
-    document.getElementById('badge-people').textContent = q.items.filter(i=>i.status==='pending').length;
+    peopleCount = q.items.filter(i=>i.status==='pending').length;
+    document.getElementById('badge-people').textContent = peopleCount;
   }catch(e){}
+
+  // Unified Review tab badge — sum of pending items across sources (cheap dir lists)
+  let total = peopleCount;
+  for(const path of ['Help Docs/candidates','Documentation/candidates','Review/errors','Inbox/meetings','Review/policy-review']){
+    try{
+      const dir = await gh(path);
+      total += dir.filter(e=>e.type==='file'&&e.name.endsWith('.md')).length;
+    }catch(e){}
+  }
+  document.getElementById('badge-review-all').textContent = total;
 }
 
 function renderEmpty(msg){
