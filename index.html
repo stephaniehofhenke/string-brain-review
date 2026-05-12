@@ -332,18 +332,23 @@ a.broken-link{color:var(--red);text-decoration:line-through}
 <div id="setup">
   <div class="setup-card">
     <div class="setup-title">STRING <span>Brain</span></div>
-    <div class="setup-sub">Connect your GitHub vault and Claude API to begin.</div>
+    <div class="setup-sub">Sign in with your vault proxy bearer. (No third-party API keys needed — they live in the Cloudflare Worker.)</div>
     <div class="field">
-      <label>GitHub Token</label>
-      <input id="setup-gh" type="password" placeholder="ghp_...">
+      <label>Dashboard Bearer Token</label>
+      <input id="setup-bearer" type="password" placeholder="paste your DASHBOARD_BEARER (64-char hex)">
+      <div style="font-size:11px;color:var(--muted);margin-top:4px">Stored in 1Password as <em>STRING Vault Proxy — Dashboard Bearer</em></div>
     </div>
     <div class="field">
-      <label>Claude API Key</label>
-      <input id="setup-anthropic" type="password" placeholder="sk-ant-...">
-    </div>
-    <div class="field">
-      <label>Notion API Key <span style="font-weight:400;color:var(--muted)">(optional — enables auto-archive)</span></label>
-      <input id="setup-notion" type="password" placeholder="ntn_...">
+      <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+        <input type="checkbox" id="setup-advanced-toggle" onchange="document.getElementById('setup-advanced').style.display=this.checked?'block':'none'">
+        <span>Advanced — legacy direct API keys</span>
+      </label>
+      <div id="setup-advanced" style="display:none;margin-top:8px">
+        <div class="field"><label>GitHub Token (legacy)</label><input id="setup-gh" type="password" placeholder="ghp_..."></div>
+        <div class="field"><label>Claude API Key (legacy)</label><input id="setup-anthropic" type="password" placeholder="sk-ant-..."></div>
+        <div class="field"><label>Notion API Key (legacy)</label><input id="setup-notion" type="password" placeholder="ntn_..."></div>
+        <div style="font-size:11px;color:var(--muted);margin-top:4px">Only fill these if you want to bypass the proxy. Not recommended.</div>
+      </div>
     </div>
     <button class="btn" onclick="saveSetup()">Continue</button>
   </div>
@@ -434,11 +439,18 @@ a.broken-link{color:var(--red);text-decoration:line-through}
 <script>
 // ───────────── Config ─────────────
 const REPO = 'stephaniehofhenke/string-marketing-vault';
-const GH_API = `https://api.github.com/repos/${REPO}/contents`;
-const CLAUDE_API = 'https://api.anthropic.com/v1/messages';
+const PROXY_URL = localStorage.getItem('proxy_url') || 'https://string-vault-proxy.stringmarketing.workers.dev';
+// When proxy bearer is set, all third-party APIs route through Cloudflare worker.
+// Browser holds no third-party keys; only DASHBOARD_BEARER (rotatable).
+const GH_API = `${PROXY_URL}/api/github/repos/${REPO}/contents`;
+const CLAUDE_API = `${PROXY_URL}/api/anthropic/messages`;
 const CLAUDE_MODEL = 'claude-sonnet-4-5';
 
 // ───────────── State ─────────────
+// Single browser-side credential: DASHBOARD_BEARER. All third-party API
+// keys live in the Cloudflare Worker Secrets — the browser never sees them.
+let DASHBOARD_BEARER = localStorage.getItem('dashboard_bearer') || '';
+// Legacy keys kept for migration / fallback — purged from localStorage on next save
 let GH_TOKEN = localStorage.getItem('gh_token') || '';
 let ANTHROPIC_KEY = localStorage.getItem('anthropic_key') || '';
 let NOTION_KEY = localStorage.getItem('notion_key') || '';
@@ -483,19 +495,26 @@ let NOTION_LOOKUP = null; // {clients:{name:url}, contacts:{name:url}, projects:
 function saveSetup(){
   try{
     console.log('saveSetup invoked');
-    const gh=document.getElementById('setup-gh').value.trim();
-    const ak=document.getElementById('setup-anthropic').value.trim();
-    const notionEl = document.getElementById('setup-notion');
-    const nk = (notionEl && notionEl.value ? notionEl.value : '').trim();
-    if(!gh||!ak){alert('GitHub + Claude tokens required');return}
-    try{
-      localStorage.setItem('gh_token',gh);
-      localStorage.setItem('anthropic_key',ak);
-      if(nk) localStorage.setItem('notion_key',nk);
-    }catch(e){
-      alert('Could not save tokens to localStorage (private browsing mode?). The dashboard will still load for this session.\n\nError: '+e.message);
+    const bearer = (document.getElementById('setup-bearer')?.value || '').trim();
+    const gh = (document.getElementById('setup-gh')?.value || '').trim();
+    const ak = (document.getElementById('setup-anthropic')?.value || '').trim();
+    const nk = (document.getElementById('setup-notion')?.value || '').trim();
+    if(!bearer && (!gh || !ak)){
+      alert('Provide either:\n  • Dashboard Bearer (recommended — no third-party keys in browser), OR\n  • Legacy: GitHub Token + Claude API Key (advanced section)');
+      return;
     }
-    GH_TOKEN=gh;ANTHROPIC_KEY=ak;NOTION_KEY=nk;
+    try{
+      if(bearer) localStorage.setItem('dashboard_bearer', bearer);
+      if(gh) localStorage.setItem('gh_token', gh);
+      if(ak) localStorage.setItem('anthropic_key', ak);
+      if(nk) localStorage.setItem('notion_key', nk);
+    }catch(e){
+      alert('Could not save to localStorage (private browsing mode?). The dashboard will still load for this session.\n\nError: '+e.message);
+    }
+    DASHBOARD_BEARER = bearer || DASHBOARD_BEARER;
+    GH_TOKEN = gh || GH_TOKEN;
+    ANTHROPIC_KEY = ak || ANTHROPIC_KEY;
+    NOTION_KEY = nk || NOTION_KEY;
     document.getElementById('setup').style.display='none';
     init();
   }catch(e){
@@ -518,7 +537,7 @@ window.addEventListener('DOMContentLoaded', ()=>{
 });
 
 function init(){
-  if(!GH_TOKEN||!ANTHROPIC_KEY){return}
+  if(!DASHBOARD_BEARER && (!GH_TOKEN||!ANTHROPIC_KEY)){return}
   document.getElementById('setup').style.display='none';
   document.getElementById('app').classList.add('ready');
   document.querySelectorAll('.nav-item').forEach(el=>{
@@ -594,9 +613,12 @@ function copyShareLink(){
 }
 
 // ───────────── GitHub ─────────────
+// Auth helper: prefer DASHBOARD_BEARER (proxy auth). Fall back to legacy GH_TOKEN if user hasn't migrated.
+function authHeaderGH(){ return DASHBOARD_BEARER ? `Bearer ${DASHBOARD_BEARER}` : `Bearer ${GH_TOKEN}`; }
+
 async function gh(path){
   const r = await fetch(`${GH_API}/${encodeURI(path)}`,{
-    headers:{Authorization:`Bearer ${GH_TOKEN}`,Accept:'application/vnd.github.v3+json'}
+    headers:{Authorization:authHeaderGH(),Accept:'application/vnd.github.v3+json'}
   });
   if(!r.ok)throw new Error(`GH ${r.status} ${path}`);
   return r.json();
@@ -618,26 +640,33 @@ async function ghFile(path){
 //   - Use the official Notion JS SDK from a Node server
 // For now we attempt direct call; if CORS blocks, fall back to a userscript-style notice.
 async function notionArchivePage(pageId){
-  if(!NOTION_KEY) throw new Error('Notion API key not set. Add it in Settings.');
   const cleanId = pageId.replace(/-/g,'').match(/.{32}/)?.[0];
   if(!cleanId) throw new Error('Invalid Notion page ID: '+pageId);
-  const url = `https://api.notion.com/v1/pages/${cleanId}`;
-  const r = await fetch(url, {
+  // Route via vault proxy (no more CORS issues, no Notion key in browser)
+  if(DASHBOARD_BEARER){
+    const r = await fetch(`${PROXY_URL}/api/notion/pages/${cleanId}`,{
+      method:'PATCH',
+      headers:{
+        'Authorization':`Bearer ${DASHBOARD_BEARER}`,
+        'Content-Type':'application/json',
+      },
+      body: JSON.stringify({archived: true}),
+    });
+    if(!r.ok) throw new Error(`Notion archive via proxy ${r.status}: ${(await r.text()).slice(0,200)}`);
+    return r.json();
+  }
+  // Legacy direct call (only works if Notion ever enables CORS)
+  if(!NOTION_KEY) throw new Error('Set DASHBOARD_BEARER in Settings to enable Notion edits.');
+  const r = await fetch(`https://api.notion.com/v1/pages/${cleanId}`, {
     method:'PATCH',
     headers:{
-      'Authorization': `Bearer ${NOTION_KEY}`,
-      'Notion-Version': '2022-06-28',
-      'Content-Type': 'application/json',
+      'Authorization':`Bearer ${NOTION_KEY}`,
+      'Notion-Version':'2022-06-28',
+      'Content-Type':'application/json',
     },
     body: JSON.stringify({archived: true}),
   });
-  if(!r.ok){
-    const errText = await r.text();
-    if(r.status === 0 || errText.includes('CORS')){
-      throw new Error('Browser blocked by CORS. Open the duplicate URL manually and delete in Notion.');
-    }
-    throw new Error(`Notion ${r.status}: ${errText.slice(0,200)}`);
-  }
+  if(!r.ok) throw new Error(`Notion ${r.status}: ${(await r.text()).slice(0,200)}`);
   return r.json();
 }
 
@@ -651,7 +680,7 @@ async function ghPutFile(path, content, sha, message){
   const encoded = btoa(unescape(encodeURIComponent(content)));
   const r = await fetch(`${GH_API}/${encodeURI(path)}`,{
     method:'PUT',
-    headers:{Authorization:`Bearer ${GH_TOKEN}`,Accept:'application/vnd.github.v3+json','Content-Type':'application/json'},
+    headers:{Authorization:authHeaderGH(),Accept:'application/vnd.github.v3+json','Content-Type':'application/json'},
     body: JSON.stringify({message: message || `Update ${path}`, content: encoded, sha})
   });
   if(!r.ok) throw new Error(`GH PUT ${r.status}: ${(await r.text()).slice(0,200)}`);
@@ -2114,7 +2143,7 @@ async function runTool(name, input){
   if(name === 'delete_file'){
     const r = await fetch(`${GH_API}/${encodeURI(input.path)}`,{
       method:'DELETE',
-      headers:{Authorization:`Bearer ${GH_TOKEN}`,Accept:'application/vnd.github.v3+json','Content-Type':'application/json'},
+      headers:{Authorization:authHeaderGH(),Accept:'application/vnd.github.v3+json','Content-Type':'application/json'},
       body: JSON.stringify({message: input.message, sha: input.sha})
     });
     if(!r.ok) return {ok:false, error:`DELETE ${r.status}: ${(await r.text()).slice(0,200)}`};
@@ -2127,8 +2156,12 @@ async function runTool(name, input){
     }catch(e){return {ok:false, error:e.message}}
   }
   if(name === 'search_code'){
-    const r = await fetch(`https://api.github.com/search/code?q=${encodeURIComponent(input.query)}+repo:${REPO}`,{
-      headers:{Authorization:`Bearer ${GH_TOKEN}`,Accept:'application/vnd.github.v3+json'}
+    // Use proxy if available; falls back to direct github.com if user hasn't set bearer yet
+    const searchUrl = DASHBOARD_BEARER
+      ? `${PROXY_URL}/api/github/search/code?q=${encodeURIComponent(input.query)}+repo:${REPO}`
+      : `https://api.github.com/search/code?q=${encodeURIComponent(input.query)}+repo:${REPO}`;
+    const r = await fetch(searchUrl,{
+      headers:{Authorization:authHeaderGH(),Accept:'application/vnd.github.v3+json'}
     });
     if(!r.ok) return {ok:false, error:`Search ${r.status}`};
     const data = await r.json();
@@ -2213,9 +2246,14 @@ async function execAgent(systemPrompt, userPrompt, opts={}){
   let turn = 0;
   while(turn++ < maxTurns){
     addExecStep('thinking', `Claude is thinking (turn ${turn})…`);
+    // Via proxy: browser sends Bearer DASHBOARD_BEARER; worker injects x-api-key from CF Secret.
+    // Legacy direct path: x-api-key on this request directly.
     const r = await fetch(CLAUDE_API, {
       method:'POST',
-      headers:{
+      headers: DASHBOARD_BEARER ? {
+        'Authorization': `Bearer ${DASHBOARD_BEARER}`,
+        'content-type': 'application/json',
+      } : {
         'x-api-key': ANTHROPIC_KEY,
         'anthropic-version': '2023-06-01',
         'content-type': 'application/json',
@@ -2817,8 +2855,11 @@ async function renderHome(){
 
   // Get recent commits for activity feed
   try{
-    const r = await fetch(`https://api.github.com/repos/${REPO}/commits?per_page=10`,
-      {headers:{Authorization:`Bearer ${GH_TOKEN}`}});
+    const commitsUrl = DASHBOARD_BEARER
+      ? `${PROXY_URL}/api/github/repos/${REPO}/commits?per_page=10`
+      : `https://api.github.com/repos/${REPO}/commits?per_page=10`;
+    const r = await fetch(commitsUrl,
+      {headers:{Authorization:authHeaderGH()}});
     const commits = await r.json();
     items.innerHTML = '<div class="nav-header" style="padding:10px 18px;color:var(--muted)">Recent activity</div>';
     commits.forEach(c=>{
@@ -2857,23 +2898,26 @@ async function renderHome(){
 function renderSettings(){
   document.getElementById('list-items').innerHTML = '';
   document.getElementById('list-count').textContent = '';
-  setTimeout(checkRunnerStatus, 100);
+  setTimeout(()=>{ checkRunnerStatus(); checkBearerStatus(); }, 100);
   document.getElementById('detail-pane').innerHTML = `
     <div class="detail-header"><h1>Settings</h1></div>
     <div class="detail-body">
       <div class="settings-form">
-        <div class="field">
-          <label>GitHub Token</label>
-          <input type="password" value="${escapeAttr(GH_TOKEN)}" id="set-gh">
+        <div class="field" style="padding:10px 14px;background:#dcf0e0;border-radius:6px;border-left:3px solid #3a7d44">
+          <label>Vault Proxy URL</label>
+          <input type="text" value="${escapeAttr(PROXY_URL)}" id="set-proxy-url" placeholder="https://string-vault-proxy.stringmarketing.workers.dev">
+          <label style="margin-top:8px">Dashboard Bearer Token <span style="font-weight:400;color:var(--muted)">(stored only in this browser — when set, all third-party API keys live in Cloudflare, not here)</span></label>
+          <input type="password" value="${escapeAttr(DASHBOARD_BEARER)}" id="set-bearer" placeholder="64-char hex">
+          <div id="bearer-status" style="font-size:11px;margin-top:4px;color:var(--muted)">Checking proxy status…</div>
         </div>
-        <div class="field">
-          <label>Claude API Key</label>
-          <input type="password" value="${escapeAttr(ANTHROPIC_KEY)}" id="set-anth">
-        </div>
-        <div class="field">
-          <label>Notion API Key <span style="font-weight:400;color:var(--muted)">(enables auto-archive)</span></label>
-          <input type="password" value="${escapeAttr(NOTION_KEY)}" id="set-notion">
-        </div>
+        <details style="margin-top:14px">
+          <summary style="cursor:pointer;font-size:12px;color:var(--muted);font-weight:600">Legacy direct API keys (advanced — leave blank if using proxy)</summary>
+          <div style="padding:8px 0">
+            <div class="field"><label>GitHub Token</label><input type="password" value="${escapeAttr(GH_TOKEN)}" id="set-gh"></div>
+            <div class="field"><label>Claude API Key</label><input type="password" value="${escapeAttr(ANTHROPIC_KEY)}" id="set-anth"></div>
+            <div class="field"><label>Notion API Key</label><input type="password" value="${escapeAttr(NOTION_KEY)}" id="set-notion"></div>
+          </div>
+        </details>
         <div class="field">
           <label>Local Action Runner Secret <span style="font-weight:400;color:var(--muted)">(enables instant Notion edits + sync from this Mac — get the secret by visiting <a href="http://127.0.0.1:8765/secret" target="_blank">http://127.0.0.1:8765/secret</a>)</span></label>
           <input type="password" value="${escapeAttr(RUNNER_SECRET)}" id="set-runner" placeholder="paste secret here">
@@ -2889,17 +2933,47 @@ function renderSettings(){
 }
 
 function updateTokens(){
-  GH_TOKEN = document.getElementById('set-gh').value.trim();
-  ANTHROPIC_KEY = document.getElementById('set-anth').value.trim();
+  DASHBOARD_BEARER = (document.getElementById('set-bearer')?.value||'').trim();
+  const proxyUrl = (document.getElementById('set-proxy-url')?.value||'').trim();
+  GH_TOKEN = (document.getElementById('set-gh')?.value||'').trim();
+  ANTHROPIC_KEY = (document.getElementById('set-anth')?.value||'').trim();
   NOTION_KEY = (document.getElementById('set-notion')?.value||'').trim();
   RUNNER_SECRET = (document.getElementById('set-runner')?.value||'').trim();
-  localStorage.setItem('gh_token',GH_TOKEN);
-  localStorage.setItem('anthropic_key',ANTHROPIC_KEY);
+  if(DASHBOARD_BEARER) localStorage.setItem('dashboard_bearer', DASHBOARD_BEARER); else localStorage.removeItem('dashboard_bearer');
+  if(proxyUrl) localStorage.setItem('proxy_url', proxyUrl);
+  if(GH_TOKEN) localStorage.setItem('gh_token', GH_TOKEN); else localStorage.removeItem('gh_token');
+  if(ANTHROPIC_KEY) localStorage.setItem('anthropic_key', ANTHROPIC_KEY); else localStorage.removeItem('anthropic_key');
   if(NOTION_KEY) localStorage.setItem('notion_key', NOTION_KEY); else localStorage.removeItem('notion_key');
   if(RUNNER_SECRET) localStorage.setItem('runner_secret', RUNNER_SECRET); else localStorage.removeItem('runner_secret');
   CACHE = {};
-  alert('Saved');
-  checkRunnerStatus();
+  alert('Saved. Reloading to apply new proxy URL…');
+  if(proxyUrl && proxyUrl !== PROXY_URL) location.reload();
+  else { checkRunnerStatus(); checkBearerStatus(); }
+}
+
+async function checkBearerStatus(){
+  const el = document.getElementById('bearer-status');
+  if(!el) return;
+  if(!DASHBOARD_BEARER){
+    el.innerHTML = '🟡 No bearer set — using legacy direct API keys (less secure). Set a bearer to route via proxy.';
+    el.style.color = '#a78700'; return;
+  }
+  try{
+    const r = await fetch(`${PROXY_URL}/api/notion/users/me`, {headers:{Authorization:`Bearer ${DASHBOARD_BEARER}`}});
+    if(r.ok){
+      el.innerHTML = '🟢 Proxy online + authenticated — all third-party API keys live in Cloudflare. Browser holds only this bearer.';
+      el.style.color = '#3a7d44';
+    } else if(r.status === 401){
+      el.innerHTML = '🔴 Bearer rejected by proxy. Update it via <code>wrangler secret put DASHBOARD_BEARER</code> + paste the same value here.';
+      el.style.color = '#a02020';
+    } else {
+      el.innerHTML = `🟡 Proxy returned ${r.status}: ${(await r.text()).slice(0,120)}`;
+      el.style.color = '#a78700';
+    }
+  }catch(e){
+    el.innerHTML = `🔴 Proxy unreachable: ${e.message}`;
+    el.style.color = '#a02020';
+  }
 }
 
 async function checkRunnerStatus(){
@@ -3027,7 +3101,10 @@ Workflow: read context first, plan in 1-2 sentences, then execute. Be concise. U
         attempts++;
         r = await fetch(CLAUDE_API,{
           method:'POST',
-          headers:{
+          headers: DASHBOARD_BEARER ? {
+            'Authorization':`Bearer ${DASHBOARD_BEARER}`,
+            'content-type':'application/json',
+          } : {
             'x-api-key':ANTHROPIC_KEY,
             'anthropic-version':'2023-06-01',
             'content-type':'application/json',
@@ -3170,7 +3247,7 @@ function escapeAttr(s){return String(s||'').replace(/"/g,'&quot;').replace(/</g,
 
 // ───────────── Boot ─────────────
 try{
-  if(GH_TOKEN && ANTHROPIC_KEY){
+  if(DASHBOARD_BEARER || (GH_TOKEN && ANTHROPIC_KEY)){
     init();
   }else{
     document.getElementById('setup').style.display='flex';
