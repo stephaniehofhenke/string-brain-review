@@ -214,6 +214,23 @@ a.broken-link{color:var(--red);text-decoration:line-through}
 .review-detail .action-row .btn-open{background:var(--surface2);color:var(--text)}
 .review-detail .action-row .btn-reopen{background:var(--surface2);color:var(--muted)}
 
+/* Claude execution modal */
+#exec-modal{position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;display:none;align-items:center;justify-content:center;padding:20px}
+#exec-modal.open{display:flex}
+.exec-card{background:var(--surface);border-radius:10px;max-width:680px;width:100%;max-height:85vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:var(--shadow-md)}
+.exec-head{padding:16px 22px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+.exec-head h2{font-size:16px;font-weight:700}
+.exec-head .close{font-size:18px;color:var(--muted);cursor:pointer}
+.exec-body{flex:1;overflow-y:auto;padding:18px 22px;font-size:13px}
+.exec-step{padding:8px 12px;background:var(--surface2);border-radius:6px;margin-bottom:6px;font-size:12px;font-family:Menlo,Monaco,monospace;color:var(--text2);display:flex;align-items:flex-start;gap:8px}
+.exec-step.thinking{font-style:italic;font-family:inherit;color:var(--muted)}
+.exec-step.tool{border-left:3px solid var(--teal)}
+.exec-step.result{border-left:3px solid var(--green);font-family:inherit;color:var(--text)}
+.exec-step.error{border-left:3px solid var(--red);background:#f0e0e0;color:#a02020}
+.exec-step .step-icon{flex-shrink:0;font-size:14px}
+.exec-foot{padding:12px 22px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end}
+.exec-foot button{font-size:13px;padding:7px 16px;border-radius:6px;font-weight:600}
+
 /* Decision choices */
 .decision-choices{margin-top:14px}
 .decision-choices .label{font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);font-weight:700;margin-bottom:8px}
@@ -268,6 +285,18 @@ a.broken-link{color:var(--red);text-decoration:line-through}
 </style>
 </head>
 <body>
+
+<!-- ── Claude execution modal ── -->
+<div id="exec-modal">
+  <div class="exec-card">
+    <div class="exec-head">
+      <h2 id="exec-title">Working…</h2>
+      <span class="close" onclick="closeExecModal()">✕</span>
+    </div>
+    <div class="exec-body" id="exec-body"></div>
+    <div class="exec-foot" id="exec-foot"></div>
+  </div>
+</div>
 
 <!-- ── Setup ── -->
 <div id="setup">
@@ -1473,6 +1502,303 @@ function openReviewItem(idx){
   `;
 }
 
+// ───────────── Claude tool-use orchestrator ─────────────
+// Spawns a single-turn-then-tools loop with Claude. Tools cover the GitHub
+// Contents API (read/write/delete vault files) and Notion archive. Used for
+// complex actions (merge contacts, etc.) that need real file manipulation.
+
+const TOOLS = [
+  {
+    name: 'read_file',
+    description: 'Read a file from the vault. Returns content + sha. Path is relative to the vault root, e.g. "Contacts/Sharon Palmer/Sharon Palmer.md".',
+    input_schema: { type:'object', properties:{ path:{type:'string'} }, required:['path'] }
+  },
+  {
+    name: 'write_file',
+    description: 'Write (create or overwrite) a vault file. Provide the new full content. Use sha when overwriting an existing file (get from read_file). Commits a git change.',
+    input_schema: { type:'object', properties:{
+      path:{type:'string'}, content:{type:'string'}, sha:{type:'string', description:'omit for new file'}, message:{type:'string'}
+    }, required:['path','content','message']}
+  },
+  {
+    name: 'delete_file',
+    description: 'Delete a vault file. Requires the current sha. Commits a git change.',
+    input_schema: { type:'object', properties:{ path:{type:'string'}, sha:{type:'string'}, message:{type:'string'} }, required:['path','sha','message']}
+  },
+  {
+    name: 'list_directory',
+    description: 'List files + subfolders in a vault directory.',
+    input_schema: { type:'object', properties:{ path:{type:'string'} }, required:['path']}
+  },
+  {
+    name: 'search_code',
+    description: 'Search the vault for a string (used to find backlinks/wikilinks to a file you are about to delete). Returns list of matching file paths.',
+    input_schema: { type:'object', properties:{ query:{type:'string'} }, required:['query']}
+  },
+  {
+    name: 'archive_notion_page',
+    description: 'Archive (move to trash) a Notion page by its UUID. Reversible.',
+    input_schema: { type:'object', properties:{ page_id:{type:'string'} }, required:['page_id']}
+  },
+  {
+    name: 'finish',
+    description: 'Call this when the task is complete. Provide a one-sentence summary of what was done.',
+    input_schema: { type:'object', properties:{ summary:{type:'string'} }, required:['summary']}
+  },
+];
+
+async function runTool(name, input){
+  if(name === 'read_file'){
+    const f = await ghFile(input.path);
+    if(!f) return {ok:false, error:'File not found'};
+    return {ok:true, content:f.content, sha:f.sha, path:f.path};
+  }
+  if(name === 'write_file'){
+    const res = await ghPutFile(input.path, input.content, input.sha, input.message);
+    return {ok:true, new_sha: res.content.sha};
+  }
+  if(name === 'delete_file'){
+    const r = await fetch(`${GH_API}/${encodeURI(input.path)}`,{
+      method:'DELETE',
+      headers:{Authorization:`Bearer ${GH_TOKEN}`,Accept:'application/vnd.github.v3+json','Content-Type':'application/json'},
+      body: JSON.stringify({message: input.message, sha: input.sha})
+    });
+    if(!r.ok) return {ok:false, error:`DELETE ${r.status}: ${(await r.text()).slice(0,200)}`};
+    return {ok:true};
+  }
+  if(name === 'list_directory'){
+    try{
+      const dir = await gh(input.path);
+      return {ok:true, entries: dir.map(e=>({name:e.name, type:e.type, path:e.path}))};
+    }catch(e){return {ok:false, error:e.message}}
+  }
+  if(name === 'search_code'){
+    const r = await fetch(`https://api.github.com/search/code?q=${encodeURIComponent(input.query)}+repo:${REPO}`,{
+      headers:{Authorization:`Bearer ${GH_TOKEN}`,Accept:'application/vnd.github.v3+json'}
+    });
+    if(!r.ok) return {ok:false, error:`Search ${r.status}`};
+    const data = await r.json();
+    return {ok:true, total_count: data.total_count, items: (data.items||[]).slice(0,30).map(i=>({path:i.path, score:i.score}))};
+  }
+  if(name === 'archive_notion_page'){
+    try{
+      await notionArchivePage(input.page_id);
+      return {ok:true};
+    }catch(e){return {ok:false, error:e.message}}
+  }
+  if(name === 'finish'){
+    return {ok:true, finished:true, summary: input.summary};
+  }
+  return {ok:false, error:'Unknown tool: '+name};
+}
+
+// Run a Claude tool-use loop until 'finish' is called or max turns reached.
+// Emits step events to the exec modal.
+async function execAgent(systemPrompt, userPrompt, opts={}){
+  const maxTurns = opts.maxTurns || 20;
+  const messages = [{role:'user', content: userPrompt}];
+  let finalSummary = null;
+  let turn = 0;
+  while(turn++ < maxTurns){
+    addExecStep('thinking', `Claude is thinking (turn ${turn})…`);
+    const r = await fetch(CLAUDE_API, {
+      method:'POST',
+      headers:{
+        'x-api-key': ANTHROPIC_KEY,
+        'anthropic-version': '2023-06-01',
+        'content-type': 'application/json',
+        'anthropic-dangerous-direct-browser-access': 'true',
+      },
+      body: JSON.stringify({
+        model: CLAUDE_MODEL,
+        max_tokens: 4000,
+        system: systemPrompt,
+        tools: TOOLS,
+        messages,
+      })
+    });
+    if(!r.ok){
+      const err = (await r.text()).slice(0,300);
+      addExecStep('error', `Claude API ${r.status}: ${err}`);
+      throw new Error(err);
+    }
+    const data = await r.json();
+    const blocks = data.content || [];
+    // Push assistant turn into history
+    messages.push({role:'assistant', content: blocks});
+
+    // Stop if no tool use → done
+    const toolUses = blocks.filter(b=>b.type==='tool_use');
+    if(!toolUses.length){
+      const text = blocks.filter(b=>b.type==='text').map(b=>b.text).join('\n').trim();
+      addExecStep('result', text || '(no response)');
+      finalSummary = text;
+      break;
+    }
+
+    // Show any text the model emitted alongside tool calls
+    for(const b of blocks){
+      if(b.type==='text' && b.text.trim()) addExecStep('thinking', b.text.trim());
+    }
+
+    // Run each tool, collect results
+    const toolResults = [];
+    for(const tu of toolUses){
+      addExecStep('tool', `${tu.name}(${shortenArgs(tu.input)})`);
+      let result;
+      try{ result = await runTool(tu.name, tu.input); }
+      catch(e){ result = {ok:false, error: e.message}; }
+      if(!result.ok) addExecStep('error', `${tu.name}: ${result.error || 'failed'}`);
+      else if(tu.name === 'finish'){
+        addExecStep('result', '✓ '+result.summary);
+        finalSummary = result.summary;
+      }
+      else addExecStep('result', `→ ok`);
+      toolResults.push({
+        type:'tool_result',
+        tool_use_id: tu.id,
+        content: JSON.stringify(result).slice(0, 8000),
+        is_error: !result.ok,
+      });
+      if(tu.name === 'finish') return finalSummary;
+    }
+    messages.push({role:'user', content: toolResults});
+  }
+  addExecStep('error', `Hit max turns (${maxTurns}) without finishing.`);
+  return finalSummary;
+}
+
+function shortenArgs(o){
+  try{
+    const s = JSON.stringify(o);
+    if(s.length < 80) return s;
+    const summary = {};
+    for(const k of Object.keys(o)){
+      const v = o[k];
+      summary[k] = typeof v === 'string' && v.length > 60 ? v.slice(0,60)+'…' : v;
+    }
+    return JSON.stringify(summary);
+  }catch(e){return ''}
+}
+
+// Modal helpers
+function openExecModal(title){
+  document.getElementById('exec-title').textContent = title || 'Working…';
+  document.getElementById('exec-body').innerHTML = '';
+  document.getElementById('exec-foot').innerHTML = '';
+  document.getElementById('exec-modal').classList.add('open');
+}
+function addExecStep(kind, text){
+  const body = document.getElementById('exec-body');
+  if(!body) return;
+  const div = document.createElement('div');
+  div.className = 'exec-step '+kind;
+  const icons = {thinking:'💭', tool:'🔧', result:'✓', error:'⚠️'};
+  div.innerHTML = `<span class="step-icon">${icons[kind]||''}</span><span>${escapeHtml(text)}</span>`;
+  body.appendChild(div);
+  body.scrollTop = body.scrollHeight;
+}
+function closeExecModal(){ document.getElementById('exec-modal').classList.remove('open') }
+function setExecDone(summary){
+  document.getElementById('exec-title').textContent = '✓ Done';
+  const foot = document.getElementById('exec-foot');
+  foot.innerHTML = `<button class="btn-sm btn-primary" onclick="closeExecModal()">Close</button>`;
+}
+
+// Append an entry to Review/audit-log.md
+async function appendAuditLog(text){
+  const path = 'Review/audit-log.md';
+  let current = '# Audit Log\n\nActions executed from the dashboard.\n\n---\n';
+  let sha = null;
+  try{
+    const f = await ghFile(path);
+    current = f.content; sha = f.sha;
+  }catch(e){/* file doesn't exist yet */}
+  const entry = `\n## ${new Date().toISOString()}\n${text}\n`;
+  await ghPutFile(path, current + entry, sha, 'Audit log entry');
+}
+
+// High-level action wrappers
+async function execMergeContacts(rawItem){
+  openExecModal('Merge contacts');
+  const names = (rawItem.items||[]).map(s=>s.name).filter(Boolean);
+  const system = `You are an executor agent inside Stephanie's STRING Marketing vault. The vault is on GitHub repo "${REPO}". Files are markdown with YAML frontmatter.
+
+Your task: merge duplicate contact records.
+
+Rules:
+1. Determine the canonical contact (the one whose Name matches the most recent meeting attendance OR has the most complete frontmatter — prefer the one with an Email populated).
+2. Read both contact files at Contacts/<Name>/<Name>.md.
+3. Merge their frontmatter: union of associated_accounts wikilinks (dedupe), union of additional_emails, keep canonical's name/email/phone. If a field is non-empty on duplicate and empty on canonical, copy it over.
+4. Merge body content: append the non-canonical body's "## Notes" section under canonical's "## Notes" (with a separator line).
+5. Write the merged content back to the canonical file.
+6. Find any wikilinks in the vault that point to the duplicate's path (search for the duplicate name in pipe-link form). Rewrite them to point to the canonical. Use search_code to find them, read each, rewrite, and write_file back.
+7. Delete the duplicate's <Name>.md and its enclosing folder if empty.
+8. Call finish with a summary.
+
+Be careful: only operate on the two contacts named in the input. Don't touch anything else.`;
+
+  const userMsg = `Merge these contacts:\n${names.map(n=>`- ${n}`).join('\n')}\n\nFull queue item: ${JSON.stringify(rawItem)}`;
+  try{
+    const summary = await execAgent(system, userMsg);
+    await appendAuditLog(`**Merge contacts:** ${names.join(' + ')}\n\n${summary}`);
+    setExecDone(summary);
+    return {ok:true, message: summary};
+  }catch(e){
+    addExecStep('error', e.message);
+    setExecDone(null);
+    return {ok:false, message: e.message};
+  }
+}
+
+async function execDeleteContact(rawItem){
+  openExecModal('Delete contact');
+  const name = rawItem.items?.[0]?.name || '(unknown)';
+  const system = `You are an executor agent inside Stephanie's STRING Marketing vault on GitHub repo "${REPO}".
+
+Task: delete a contact record cleanly.
+
+Steps:
+1. Locate the contact at Contacts/<Name>/<Name>.md. Read it to confirm.
+2. Search the vault for any wikilinks pointing to the contact (look for the contact's name in pipe-form wikilinks, e.g. [[Contacts/<Name>/<Name>|<Name>]]).
+3. For each backlink file: read it, replace the wikilink with the plain name in italics (e.g. *<Name>*), write it back.
+4. Delete the contact's .md file. Delete its folder if it's now empty (check via list_directory first).
+5. Call finish with a summary including how many backlinks were rewritten.
+
+Only operate on this one contact. Don't touch anything else.`;
+  const userMsg = `Delete this contact: ${name}\n\nFull queue item: ${JSON.stringify(rawItem)}`;
+  try{
+    const summary = await execAgent(system, userMsg);
+    await appendAuditLog(`**Delete contact:** ${name}\n\n${summary}`);
+    setExecDone(summary);
+    return {ok:true, message: summary};
+  }catch(e){
+    addExecStep('error', e.message);
+    setExecDone(null);
+    return {ok:false, message: e.message};
+  }
+}
+
+async function execGenericClaudeAction(action, rawItem){
+  openExecModal(`Execute: ${action}`);
+  const system = `You are an executor agent inside Stephanie's STRING Marketing vault on GitHub repo "${REPO}". Files are markdown with YAML frontmatter.
+
+Task: ${action}.
+
+Be careful, deliberate, and minimally invasive. Read context first via the tools, plan your edits, then write/delete only what's required. Always call finish with a clear summary when done.`;
+  const userMsg = `Action requested: ${action}\n\nQueue item: ${JSON.stringify(rawItem)}`;
+  try{
+    const summary = await execAgent(system, userMsg);
+    await appendAuditLog(`**${action}:**\n\n${summary}`);
+    setExecDone(summary);
+    return {ok:true, message: summary};
+  }catch(e){
+    addExecStep('error', e.message);
+    setExecDone(null);
+    return {ok:false, message: e.message};
+  }
+}
+
 // ───────────── Decision choices per item type ─────────────
 // Each choice: {id, label, hint, style ('primary'|'danger'|''), run(item) → {ok, message}, autoResolve, resolveNote}
 function getChoicesForItem(it){
@@ -1539,9 +1865,9 @@ function getChoicesForItem(it){
   if(q === 'contact-duplicate'){
     const names = (raw.items||[]).map(s=>s.name).filter(Boolean);
     return [
-      {id:'merge', label:'Merge into canonical (Claude executes)', hint:'queues a merge action', style:'primary',
-        run: async ()=>queueActionRequest({action:'merge-contacts', item:raw, decided_by:'Stephanie'}),
-        autoResolve:true, resolveNote:'Queued merge for Claude to execute'},
+      {id:'merge', label:'🤖 Merge contacts (Claude executes now)', hint:'reads, merges, rewrites backlinks, deletes dupe', style:'primary',
+        run: async ()=>execMergeContacts(raw),
+        autoResolve:true, resolveNote:'Merged via Claude executor'},
       ...names.slice(0,2).map(n=>({id:'open-'+n, label:`Open '${n}'`, hint:'review the record',
         run: async ()=>{ location.hash = `#/Contacts/${encodeURIComponent(n)}`; return {ok:true} },
         autoResolve:false})),
@@ -1558,9 +1884,12 @@ function getChoicesForItem(it){
         autoResolve:false},
       {id:'mark-orphan', label:'Mark as orphan', hint:'no STRING client association',
         run: async ()=>({ok:true}), autoResolve:true, resolveNote:'Confirmed no client association'},
-      {id:'delete', label:'Delete contact', hint:'not a real contact', style:'danger',
-        run: async ()=>queueActionRequest({action:'delete-contact', item:raw, decided_by:'Stephanie'}),
-        autoResolve:true, resolveNote:'Queued delete for Claude to execute'},
+      {id:'delete', label:'🤖 Delete contact (Claude executes now)', hint:'rewrites backlinks then deletes file', style:'danger',
+        run: async ()=>{
+          if(!confirm(`Delete contact "${raw.items?.[0]?.name||'?'}"? This rewrites all wikilinks and deletes the file. Reversible via git history.`)) return {ok:false, message:'Cancelled'};
+          return execDeleteContact(raw);
+        },
+        autoResolve:true, resolveNote:'Deleted via Claude executor'},
     ];
   }
 
@@ -1578,9 +1907,12 @@ function getChoicesForItem(it){
   // contact-likely-junk
   if(q === 'contact-likely-junk'){
     return [
-      {id:'delete', label:'Delete this contact', style:'danger',
-        run: async ()=>queueActionRequest({action:'delete-contact', item:raw, decided_by:'Stephanie'}),
-        autoResolve:true, resolveNote:'Queued delete for Claude'},
+      {id:'delete', label:'🤖 Delete this contact (Claude executes now)', style:'danger',
+        run: async ()=>{
+          if(!confirm(`Delete contact "${raw.items?.[0]?.name||'?'}"? Rewrites backlinks then deletes file. Reversible via git.`)) return {ok:false, message:'Cancelled'};
+          return execDeleteContact(raw);
+        },
+        autoResolve:true, resolveNote:'Deleted via Claude executor'},
       {id:'keep', label:'Keep with a note', style:'',
         run: async ()=>({ok:true}), autoResolve:true, resolveNote:'Kept — legitimate contact'},
     ];
@@ -1591,26 +1923,29 @@ function getChoicesForItem(it){
     const name = raw.items?.[0]?.name || it.title;
     return [
       {id:'keep', label:'Keep as Client', style:'primary',
-        run: async ()=>queueActionRequest({action:'confirm-client', item:raw, decided_by:'Stephanie'}),
+        run: async ()=>execGenericClaudeAction('confirm-client-status (set status:active in Clients/<Name>/<Name>.md frontmatter)', raw),
         autoResolve:true, resolveNote:'Confirmed as Client'},
-      {id:'to-lead', label:'Move to Leads', hint:'reclassify',
-        run: async ()=>queueActionRequest({action:'move-to-leads', item:raw, decided_by:'Stephanie'}),
-        autoResolve:true, resolveNote:'Queued move to Leads'},
+      {id:'to-lead', label:'🤖 Move to Leads (Claude executes)', hint:'moves folder Clients/<X> → Leads/<X>',
+        run: async ()=>execGenericClaudeAction('move-client-to-leads (move the entire Clients/<Name>/ folder to Leads/<Name>/, rename <Name>.md frontmatter type from client to lead, rewrite backlinks)', raw),
+        autoResolve:true, resolveNote:'Moved to Leads via Claude'},
       {id:'open', label:'Open record', hint:'review first',
         run: async ()=>{ location.hash = `#/Clients/${encodeURIComponent(name)}`; return {ok:true} },
         autoResolve:false},
-      {id:'delete', label:'Delete record', style:'danger',
-        run: async ()=>queueActionRequest({action:'delete-client', item:raw, decided_by:'Stephanie'}),
-        autoResolve:true, resolveNote:'Queued delete for Claude'},
+      {id:'delete', label:'🤖 Delete record (Claude executes)', style:'danger',
+        run: async ()=>{
+          if(!confirm('Delete this client record entirely? Reversible via git history.')) return {ok:false, message:'Cancelled'};
+          return execGenericClaudeAction('delete-client (rewrite all backlinks to plain italics, then delete the Clients/<Name>/ folder)', raw);
+        },
+        autoResolve:true, resolveNote:'Deleted via Claude'},
     ];
   }
 
   // client-needs-split
   if(q === 'client-needs-split'){
     return [
-      {id:'split', label:'Split into separate clients', hint:'Claude executes', style:'primary',
-        run: async ()=>queueActionRequest({action:'split-client', item:raw, decided_by:'Stephanie'}),
-        autoResolve:true, resolveNote:'Queued split for Claude'},
+      {id:'split', label:'🤖 Split into separate clients (Claude executes)', hint:'creates new folders, redistributes content', style:'primary',
+        run: async ()=>execGenericClaudeAction('split-client (one Clients/ folder represents 2+ companies that got combined; create a separate Clients/<Name>/ for each, redistribute body content, copy frontmatter, leave canonical client as the primary one)', raw),
+        autoResolve:true, resolveNote:'Split via Claude'},
       {id:'keep', label:'Keep combined', style:'',
         run: async ()=>({ok:true}), autoResolve:true, resolveNote:'Confirmed combined record'},
     ];
