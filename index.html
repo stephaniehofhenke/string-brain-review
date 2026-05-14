@@ -378,12 +378,16 @@ a.broken-link{color:var(--red);text-decoration:line-through}
       <div class="nav-item" data-view="Systems">Systems <span class="badge" id="badge-Systems">—</span></div>
     </div>
     <div class="nav-section">
-      <div class="nav-header">Review</div>
-      <div class="nav-item" data-view="review-all"><strong>All Items</strong> <span class="badge" id="badge-review-all">—</span></div>
+      <div class="nav-header">Reviews</div>
+      <div class="nav-item" data-view="review-active"><strong>Active</strong> <span class="badge" id="badge-review-active">—</span></div>
+      <div class="nav-item" data-view="review-awaiting">Awaiting Fix <span class="badge" id="badge-review-awaiting">—</span></div>
+      <div class="nav-item" data-view="review-archive">Completed <span class="badge" id="badge-review-archive">—</span></div>
+      <div class="nav-item" data-view="review-rules" style="font-size:11px;opacity:0.7">📋 Suppression Rules</div>
+    </div>
+    <div class="nav-section">
+      <div class="nav-header">Other Queues</div>
+      <div class="nav-item" data-view="review-all">All Items (legacy) <span class="badge" id="badge-review-all">—</span></div>
       <div class="nav-item" data-view="review-people">People <span class="badge" id="badge-people">—</span></div>
-      <div class="nav-item" data-view="review-qa">Q&amp;A (Help Docs)</div>
-      <div class="nav-item" data-view="review-docs">Documentation</div>
-      <div class="nav-item" data-view="review-errors">Errors</div>
       <div class="nav-item" data-view="incidents">Incidents <span class="badge" id="badge-incidents">—</span></div>
     </div>
     <div class="nav-section">
@@ -791,7 +795,11 @@ const VIEWS = {
   'Team':       {label:'Team',     type:'entity'},
   'Services':   {label:'Services', type:'entity-flat'},
   'Systems':    {label:'Systems',  type:'entity-flat'},
-  'review-all': {label:'All Review Items', type:'review-all'},
+  'review-active':   {label:'Active Reviews', type:'review-state', path:'Review/queue', state:'active'},
+  'review-awaiting': {label:'Awaiting Fix', type:'review-state', path:'Review/awaiting-fix', state:'awaiting'},
+  'review-archive':  {label:'Completed Reviews', type:'review-state', path:'Review/_archive', state:'archive'},
+  'review-rules':    {label:'Suppression Rules', type:'review-rules'},
+  'review-all': {label:'All Review Items (legacy)', type:'review-all'},
   'review-people': {label:'People review queue', type:'people-queue'},
   'review-qa':  {label:'Q&A candidates', type:'help-docs'},
   'review-docs':{label:'Documentation', type:'documentation'},
@@ -829,6 +837,8 @@ async function switchView(v){
   if(cfg.type==='home'){renderHome();return}
   if(cfg.type==='entity'){await loadEntityList(v)}
   else if(cfg.type==='entity-flat'){await loadEntityFlat(v)}
+  else if(cfg.type==='review-state'){await loadReviewState(cfg.path, cfg.state)}
+  else if(cfg.type==='review-rules'){await loadSuppressionRules()}
   else if(cfg.type==='review-all'){await loadReviewAll()}
   else if(cfg.type==='people-queue'){
     // Redirect to unified Review filtered to people-domain (clients/contacts/team/etc.)
@@ -1383,6 +1393,176 @@ function renderPeopleQueueCard(it,resolved){
 let CHAT_CONTEXT_REF = null;  // {kind, title, body, path} — set when opening chat from a tile or detail
 let PEOPLE_QUEUE_CACHE = null; // {content, sha, parsed} — kept for write-back
 let REVIEW_SHOW_RESOLVED = false;
+
+// ───────────── NEW 3-state Review system (queue / awaiting-fix / _archive) ─────────────
+let REVIEW_STATE_CACHE = {};  // path → array of items
+let REVIEW_STATE_FILTERS = {system:new Set(), folder:new Set(), severity:new Set(), private_only:false, search:''};
+
+async function loadReviewState(path, state){
+  const list = document.getElementById('list-items');
+  const pane = document.getElementById('detail-pane');
+  list.innerHTML = '<div class="loading"><span class="spinner"></span>&nbsp; Loading…</div>';
+  const stateLabels = {active:'Active', awaiting:'Awaiting Fix', archive:'Completed'};
+  pane.innerHTML = `<div class="empty-state"><div class="icon">📋</div><div>${stateLabels[state]} reviews — select an item.</div></div>`;
+
+  // Fetch files in path
+  let files = [];
+  try{
+    const dir = await gh(path);
+    files = dir.filter(e=>e.type==='file'&&e.name.endsWith('.md'));
+  }catch(e){
+    list.innerHTML = `<div class="empty-state">Could not load ${path}: ${escapeHtml(e.message)}</div>`;
+    return;
+  }
+  if(files.length === 0){
+    list.innerHTML = `<div class="empty-state"><div class="icon">✨</div><div>No ${stateLabels[state].toLowerCase()} reviews.</div></div>`;
+    document.getElementById('list-count').textContent = '0 items';
+    document.getElementById('filter-bar').innerHTML = '';
+    return;
+  }
+
+  // Parallel-fetch + parse frontmatter
+  const items = await Promise.all(files.map(async f => {
+    try{
+      const r = await ghFile(f.path);
+      const md = atob(r.content.replace(/\n/g,''));
+      const fmMatch = md.match(/^---\n([\s\S]*?)\n---/);
+      const fm = {};
+      if(fmMatch){
+        for(const line of fmMatch[1].split('\n')){
+          const m = line.match(/^([a-z_][a-z0-9_]*):\s*(.*)$/i);
+          if(m) fm[m[1]] = m[2].trim().replace(/^['"]|['"]$/g,'');
+        }
+      }
+      const titleMatch = md.match(/^#\s+(.+)$/m);
+      return {
+        path: f.path,
+        filename: f.name,
+        title: titleMatch ? titleMatch[1] : f.name.replace(/\.md$/,''),
+        system: fm.system || '?',
+        folder: fm.folder || '?',
+        severity: fm.severity || 'medium',
+        private: fm.private === 'true',
+        status: fm.status || 'pending',
+        created: fm.created || '',
+        record_link: fm.record_link || '',
+        category: fm.category || '',
+        body_preview: md.replace(/^---[\s\S]*?---/,'').replace(/^#+\s+.+$/gm,'').trim().substring(0,200),
+      };
+    }catch(e){
+      return {path:f.path, filename:f.name, title:f.name.replace(/\.md$/,''), system:'?', folder:'?', severity:'medium', _error:e.message};
+    }
+  }));
+
+  REVIEW_STATE_CACHE[path] = items;
+  REVIEW_STATE_FILTERS = {system:new Set(), folder:new Set(), severity:new Set(), private_only:false, search:''};
+  renderReviewStateFilters(path, items, state);
+  renderReviewStateList(path, items, state);
+}
+
+function renderReviewStateFilters(path, items, state){
+  const systems = [...new Set(items.map(i=>i.system))].filter(s=>s&&s!=='?').sort();
+  const folders = [...new Set(items.map(i=>i.folder))].filter(s=>s&&s!=='?').sort();
+  const severities = ['blocking','medium','nit'];
+  const fb = document.getElementById('filter-bar');
+  fb.innerHTML = `
+    <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)">
+      <strong style="font-size:12px;margin-right:4px">Filter:</strong>
+      ${systems.length ? `<select id="rs-system" onchange="onReviewStateFilterChange('${path}','${state}')" style="font-size:12px"><option value="">All systems</option>${systems.map(s=>`<option value="${escapeAttr(s)}">${escapeHtml(s)}</option>`).join('')}</select>` : ''}
+      ${folders.length ? `<select id="rs-folder" onchange="onReviewStateFilterChange('${path}','${state}')" style="font-size:12px"><option value="">All folders</option>${folders.map(f=>`<option value="${escapeAttr(f)}">${escapeHtml(f)}</option>`).join('')}</select>` : ''}
+      <select id="rs-sev" onchange="onReviewStateFilterChange('${path}','${state}')" style="font-size:12px"><option value="">All severities</option>${severities.map(s=>`<option value="${s}">${s}</option>`).join('')}</select>
+      <label style="font-size:12px"><input id="rs-priv" type="checkbox" onchange="onReviewStateFilterChange('${path}','${state}')"> Private only</label>
+      <span style="margin-left:auto;font-size:11px;color:var(--muted)" id="rs-result-count"></span>
+    </div>
+  `;
+}
+
+function onReviewStateFilterChange(path, state){
+  const sysSel = document.getElementById('rs-system');
+  const folSel = document.getElementById('rs-folder');
+  const sevSel = document.getElementById('rs-sev');
+  const privCb = document.getElementById('rs-priv');
+  const search = document.getElementById('search')?.value || '';
+  REVIEW_STATE_FILTERS = {
+    system: sysSel && sysSel.value ? new Set([sysSel.value]) : new Set(),
+    folder: folSel && folSel.value ? new Set([folSel.value]) : new Set(),
+    severity: sevSel && sevSel.value ? new Set([sevSel.value]) : new Set(),
+    private_only: privCb ? privCb.checked : false,
+    search: search.toLowerCase(),
+  };
+  renderReviewStateList(path, REVIEW_STATE_CACHE[path] || [], state);
+}
+
+function renderReviewStateList(path, items, state){
+  const f = REVIEW_STATE_FILTERS;
+  let filtered = items.filter(i => {
+    if(f.system.size && !f.system.has(i.system)) return false;
+    if(f.folder.size && !f.folder.has(i.folder)) return false;
+    if(f.severity.size && !f.severity.has(i.severity)) return false;
+    if(f.private_only && !i.private) return false;
+    if(f.search && !`${i.title} ${i.system} ${i.folder}`.toLowerCase().includes(f.search)) return false;
+    return true;
+  });
+  const sevBadge = {blocking:'#B52025', medium:'#CCBE6D', nit:'#8A8A96'};
+  const html = filtered.map(i => `
+    <div class="list-item" onclick="openReviewStateItem('${escapeAttr(i.path)}')">
+      <div class="list-item-title">${escapeHtml(i.title)}</div>
+      <div class="list-item-meta">
+        <span style="display:inline-block;padding:1px 6px;border-radius:8px;background:${sevBadge[i.severity]||'#888'};color:#fff;font-size:10px">${i.severity}</span>
+        <span style="color:var(--muted);font-size:11px">${escapeHtml(i.system)} · ${escapeHtml(i.folder)}</span>
+        ${i.private ? '<span style="color:#B52025">🔒 private</span>' : ''}
+        ${i.category ? `<span style="color:var(--muted);font-size:11px">· ${escapeHtml(i.category)}</span>` : ''}
+      </div>
+    </div>
+  `).join('') || '<div class="empty-state">No items match your filters.</div>';
+  document.getElementById('list-items').innerHTML = html;
+  document.getElementById('list-count').textContent = `${filtered.length} of ${items.length} items`;
+  const rc = document.getElementById('rs-result-count');
+  if(rc) rc.textContent = `Showing ${filtered.length} / ${items.length}`;
+}
+
+async function openReviewStateItem(path){
+  const pane = document.getElementById('detail-pane');
+  pane.innerHTML = '<div class="loading"><span class="spinner"></span>&nbsp; Loading…</div>';
+  try{
+    const r = await ghFile(path);
+    const md = atob(r.content.replace(/\n/g,''));
+    const filename = path.split('/').pop();
+    const obsidianUri = `obsidian://open?vault=STRING%20Marketing&file=${encodeURIComponent(path.replace(/\.md$/,''))}`;
+    pane.innerHTML = `
+      <div style="padding:12px 0;border-bottom:1px solid var(--border);margin-bottom:12px;display:flex;gap:8px;align-items:center">
+        <a href="${obsidianUri}" style="background:var(--teal);color:#fff;padding:6px 12px;border-radius:4px;text-decoration:none;font-size:12px">Open in Obsidian</a>
+        <span style="font-size:11px;color:var(--muted)">${escapeHtml(filename)}</span>
+      </div>
+      <div class="md-rendered">${DOMPurify.sanitize(marked.parse(md))}</div>
+    `;
+  }catch(e){
+    pane.innerHTML = `<div class="empty-state">Failed to load: ${escapeHtml(e.message)}</div>`;
+  }
+}
+
+async function loadSuppressionRules(){
+  const list = document.getElementById('list-items');
+  const pane = document.getElementById('detail-pane');
+  list.innerHTML = '<div class="empty-state"><div class="icon">📋</div><div>See right pane for rules.</div></div>';
+  document.getElementById('list-count').textContent = '';
+  document.getElementById('filter-bar').innerHTML = '';
+  pane.innerHTML = '<div class="loading"><span class="spinner"></span>&nbsp; Loading rules…</div>';
+  try{
+    const r = await ghFile('Systems/_suppression-rules.md');
+    const md = atob(r.content.replace(/\n/g,''));
+    const obsidianUri = `obsidian://open?vault=STRING%20Marketing&file=Systems%2F_suppression-rules`;
+    pane.innerHTML = `
+      <div style="padding:12px 0;border-bottom:1px solid var(--border);margin-bottom:12px;display:flex;gap:8px;align-items:center">
+        <a href="${obsidianUri}" style="background:var(--teal);color:#fff;padding:6px 12px;border-radius:4px;text-decoration:none;font-size:12px">Edit in Obsidian</a>
+        <span style="font-size:11px;color:var(--muted)">Suppression rules govern what gets auto-filtered before review items are filed.</span>
+      </div>
+      <div class="md-rendered">${DOMPurify.sanitize(marked.parse(md))}</div>
+    `;
+  }catch(e){
+    pane.innerHTML = `<div class="empty-state">Could not load suppression rules: ${escapeHtml(e.message)}</div>`;
+  }
+}
 
 async function loadReviewAll(){
   const list = document.getElementById('list-items');
@@ -3378,9 +3558,23 @@ async function refreshCounts(){
     document.getElementById('badge-people').textContent = peopleCount;
   }catch(e){}
 
-  // Unified Review tab badge — count active review items in the 3-state review system
-  // Only count Review/queue (pending) + Review/awaiting-fix (diagnosed but not yet applied)
-  // Do NOT count Review/_archive (resolved) or Inbox/meetings (legacy backlog, not reviews)
+  // 3-state review system badges (Active / Awaiting Fix / Completed)
+  for(const [path, badgeId] of [
+    ['Review/queue','badge-review-active'],
+    ['Review/awaiting-fix','badge-review-awaiting'],
+    ['Review/_archive','badge-review-archive'],
+  ]){
+    try{
+      const dir = await gh(path);
+      const c = dir.filter(e=>e.type==='file'&&e.name.endsWith('.md')).length;
+      const el = document.getElementById(badgeId);
+      if(el) el.textContent = c;
+    }catch(e){
+      const el = document.getElementById(badgeId);
+      if(el) el.textContent = '0';
+    }
+  }
+  // Legacy "All Items" badge — keep showing the combined count for that tab
   let total = peopleCount;
   for(const path of ['Review/queue','Review/awaiting-fix']){
     try{
