@@ -1425,7 +1425,7 @@ async function loadReviewState(path, state){
   const items = await Promise.all(files.map(async f => {
     try{
       const r = await ghFile(f.path);
-      const md = atob(r.content.replace(/\n/g,''));
+      const md = new TextDecoder().decode(Uint8Array.from(atob(r.content.replace(/\n/g,'')), c => c.charCodeAt(0)));
       const fmMatch = md.match(/^---\n([\s\S]*?)\n---/);
       const fm = {};
       if(fmMatch){
@@ -1526,7 +1526,7 @@ async function openReviewStateItem(path){
   pane.innerHTML = '<div class="loading"><span class="spinner"></span>&nbsp; Loading…</div>';
   try{
     const r = await ghFile(path);
-    const md = atob(r.content.replace(/\n/g,''));
+    const md = new TextDecoder().decode(Uint8Array.from(atob(r.content.replace(/\n/g,'')), c => c.charCodeAt(0)));
     const filename = path.split('/').pop();
     const obsidianUri = `obsidian://open?vault=STRING%20Marketing&file=${encodeURIComponent(path.replace(/\.md$/,''))}`;
     pane.innerHTML = `
@@ -1550,7 +1550,7 @@ async function loadSuppressionRules(){
   pane.innerHTML = '<div class="loading"><span class="spinner"></span>&nbsp; Loading rules…</div>';
   try{
     const r = await ghFile('Systems/_suppression-rules.md');
-    const md = atob(r.content.replace(/\n/g,''));
+    const md = new TextDecoder().decode(Uint8Array.from(atob(r.content.replace(/\n/g,'')), c => c.charCodeAt(0)));
     const obsidianUri = `obsidian://open?vault=STRING%20Marketing&file=Systems%2F_suppression-rules`;
     pane.innerHTML = `
       <div style="padding:12px 0;border-bottom:1px solid var(--border);margin-bottom:12px;display:flex;gap:8px;align-items:center">
