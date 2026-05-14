@@ -379,16 +379,9 @@ a.broken-link{color:var(--red);text-decoration:line-through}
     </div>
     <div class="nav-section">
       <div class="nav-header">Reviews</div>
-      <div class="nav-item" data-view="review-active"><strong>Active</strong> <span class="badge" id="badge-review-active">—</span></div>
-      <div class="nav-item" data-view="review-awaiting">Awaiting Fix <span class="badge" id="badge-review-awaiting">—</span></div>
-      <div class="nav-item" data-view="review-archive">Completed <span class="badge" id="badge-review-archive">—</span></div>
+      <div class="nav-item" data-view="review"><strong>Review</strong> <span class="badge" id="badge-review">—</span></div>
       <div class="nav-item" data-view="review-rules" style="font-size:11px;opacity:0.7">📋 Suppression Rules</div>
-    </div>
-    <div class="nav-section">
-      <div class="nav-header">Other Queues</div>
-      <div class="nav-item" data-view="review-all">All Items (legacy) <span class="badge" id="badge-review-all">—</span></div>
-      <div class="nav-item" data-view="review-people">People <span class="badge" id="badge-people">—</span></div>
-      <div class="nav-item" data-view="incidents">Incidents <span class="badge" id="badge-incidents">—</span></div>
+      <div class="nav-item" data-view="error-log">Error Log <span class="badge" id="badge-error-log">—</span></div>
     </div>
     <div class="nav-section">
       <div class="nav-header">Admin</div>
@@ -795,15 +788,13 @@ const VIEWS = {
   'Team':       {label:'Team',     type:'entity'},
   'Services':   {label:'Services', type:'entity-flat'},
   'Systems':    {label:'Systems',  type:'entity-flat'},
-  'review-active':   {label:'Active Reviews', type:'review-state', path:'Review/queue', state:'active'},
-  'review-awaiting': {label:'Awaiting Fix', type:'review-state', path:'Review/awaiting-fix', state:'awaiting'},
-  'review-archive':  {label:'Completed Reviews', type:'review-state', path:'Review/_archive', state:'archive'},
+  'review':          {label:'Review', type:'review-unified'},
   'review-rules':    {label:'Suppression Rules', type:'review-rules'},
-  'review-all': {label:'All Review Items (legacy)', type:'review-all'},
-  'review-people': {label:'People review queue', type:'people-queue'},
-  'review-qa':  {label:'Q&A candidates', type:'help-docs'},
-  'review-docs':{label:'Documentation', type:'documentation'},
-  'review-errors':{label:'Errors', type:'errors'},
+  'error-log':       {label:'Error Log', type:'error-log'},
+  // Legacy view aliases (still callable but not in sidebar)
+  'review-active':   {label:'Active Reviews', type:'review-unified-default-state', state:'active'},
+  'review-awaiting': {label:'Awaiting Fix', type:'review-unified-default-state', state:'awaiting'},
+  'review-archive':  {label:'Completed Reviews', type:'review-unified-default-state', state:'archive'},
   'incidents':  {label:'Incidents', type:'incidents'},
   'home':       {label:'Home', type:'home'},
   'chat':       {label:'Chat', type:'chat'},
@@ -837,8 +828,10 @@ async function switchView(v){
   if(cfg.type==='home'){renderHome();return}
   if(cfg.type==='entity'){await loadEntityList(v)}
   else if(cfg.type==='entity-flat'){await loadEntityFlat(v)}
-  else if(cfg.type==='review-state'){await loadReviewState(cfg.path, cfg.state)}
+  else if(cfg.type==='review-unified'){await loadReviewUnified('active')}
+  else if(cfg.type==='review-unified-default-state'){await loadReviewUnified(cfg.state)}
   else if(cfg.type==='review-rules'){await loadSuppressionRules()}
+  else if(cfg.type==='error-log'){await loadErrorLog()}
   else if(cfg.type==='review-all'){await loadReviewAll()}
   else if(cfg.type==='people-queue'){
     // Redirect to unified Review filtered to people-domain (clients/contacts/team/etc.)
@@ -1393,6 +1386,188 @@ function renderPeopleQueueCard(it,resolved){
 let CHAT_CONTEXT_REF = null;  // {kind, title, body, path} — set when opening chat from a tile or detail
 let PEOPLE_QUEUE_CACHE = null; // {content, sha, parsed} — kept for write-back
 let REVIEW_SHOW_RESOLVED = false;
+
+// ───────────── Unified Review (single tab, state filter chips) ─────────────
+let REVIEW_UNIFIED_STATE = 'active';  // active | awaiting | archive
+const REVIEW_STATE_PATHS = {active:'Review/queue', awaiting:'Review/awaiting-fix', archive:'Review/_archive'};
+const REVIEW_STATE_LABELS = {active:'Active', awaiting:'Awaiting Fix', archive:'Completed'};
+
+async function loadReviewUnified(initialState){
+  REVIEW_UNIFIED_STATE = initialState || 'active';
+  await renderReviewUnifiedFor(REVIEW_UNIFIED_STATE);
+}
+
+async function renderReviewUnifiedFor(state){
+  REVIEW_UNIFIED_STATE = state;
+  // Render state chips + (re)load items
+  const path = REVIEW_STATE_PATHS[state];
+  // Inject state chips into list header (above filter bar)
+  const list = document.getElementById('list-items');
+  list.innerHTML = '<div class="loading"><span class="spinner"></span>&nbsp; Loading…</div>';
+  // Render state chips into filter-bar first
+  const fb = document.getElementById('filter-bar');
+  fb.innerHTML = `
+    <div style="display:flex;gap:6px;align-items:center;padding:6px 0">
+      <strong style="font-size:12px">State:</strong>
+      ${Object.entries(REVIEW_STATE_LABELS).map(([k,label]) => `
+        <button onclick="renderReviewUnifiedFor('${k}')" style="padding:4px 10px;border:1px solid var(--border);border-radius:14px;font-size:12px;cursor:pointer;background:${k===state?'var(--teal)':'var(--surface)'};color:${k===state?'#fff':'var(--text)'}">${label} <span id="state-count-${k}" style="opacity:.7;margin-left:4px">—</span></button>
+      `).join('')}
+    </div>
+    <div id="filter-bar-inner"></div>
+  `;
+  await loadReviewStateInto(path, state);
+}
+
+async function loadReviewStateInto(path, state){
+  const list = document.getElementById('list-items');
+  let files = [];
+  try{
+    const dir = await gh(path);
+    files = dir.filter(e=>e.type==='file'&&e.name.endsWith('.md'));
+  }catch(e){
+    list.innerHTML = `<div class="empty-state">Could not load ${path}: ${escapeHtml(e.message)}</div>`;
+    return;
+  }
+  // Update state count chips
+  for(const [k, p] of Object.entries(REVIEW_STATE_PATHS)){
+    try{
+      const d = await gh(p);
+      const c = d.filter(e=>e.type==='file'&&e.name.endsWith('.md')).length;
+      const el = document.getElementById('state-count-'+k);
+      if(el) el.textContent = c;
+    }catch(e){}
+  }
+
+  if(files.length === 0){
+    list.innerHTML = `<div class="empty-state"><div class="icon">✨</div><div>No ${REVIEW_STATE_LABELS[state].toLowerCase()} reviews.</div></div>`;
+    document.getElementById('list-count').textContent = '0 items';
+    document.getElementById('filter-bar-inner').innerHTML = '';
+    return;
+  }
+
+  // Parallel-fetch + parse frontmatter
+  const items = await Promise.all(files.map(async f => {
+    try{
+      const r = await ghFile(f.path);
+      const md = new TextDecoder().decode(Uint8Array.from(atob(r.content.replace(/\n/g,'')), c => c.charCodeAt(0)));
+      const fmMatch = md.match(/^---\n([\s\S]*?)\n---/);
+      const fm = {};
+      if(fmMatch){
+        for(const line of fmMatch[1].split('\n')){
+          const m = line.match(/^([a-z_][a-z0-9_]*):\s*(.*)$/i);
+          if(m) fm[m[1]] = m[2].trim().replace(/^['"]|['"]$/g,'');
+        }
+      }
+      const titleMatch = md.match(/^#\s+(.+)$/m);
+      return {
+        path: f.path,
+        filename: f.name,
+        title: titleMatch ? titleMatch[1] : f.name.replace(/\.md$/,''),
+        system: fm.system || '?',
+        folder: fm.folder || '?',
+        severity: fm.severity || 'medium',
+        private: fm.private === 'true',
+        status: fm.status || 'pending',
+        created: fm.created || '',
+        category: fm.category || '',
+      };
+    }catch(e){
+      return {path:f.path, filename:f.name, title:f.name.replace(/\.md$/,''), system:'?', folder:'?', severity:'medium'};
+    }
+  }));
+
+  REVIEW_STATE_CACHE[path] = items;
+  REVIEW_STATE_FILTERS = {system:new Set(), folder:new Set(), severity:new Set(), private_only:false, search:''};
+  renderReviewStateFiltersInner(path, items, state);
+  renderReviewStateList(path, items, state);
+}
+
+function renderReviewStateFiltersInner(path, items, state){
+  const systems = [...new Set(items.map(i=>i.system))].filter(s=>s&&s!=='?').sort();
+  const folders = [...new Set(items.map(i=>i.folder))].filter(s=>s&&s!=='?').sort();
+  const severities = ['blocking','medium','nit'];
+  const fb = document.getElementById('filter-bar-inner');
+  if(!fb) return;
+  fb.innerHTML = `
+    <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:6px 0;border-top:1px solid var(--border);margin-top:4px">
+      <strong style="font-size:12px">Filter:</strong>
+      ${systems.length ? `<select id="rs-system" onchange="onReviewStateFilterChange('${path}','${state}')" style="font-size:12px"><option value="">All systems</option>${systems.map(s=>`<option value="${escapeAttr(s)}">${escapeHtml(s)}</option>`).join('')}</select>` : ''}
+      ${folders.length ? `<select id="rs-folder" onchange="onReviewStateFilterChange('${path}','${state}')" style="font-size:12px"><option value="">All folders</option>${folders.map(f=>`<option value="${escapeAttr(f)}">${escapeHtml(f)}</option>`).join('')}</select>` : ''}
+      <select id="rs-sev" onchange="onReviewStateFilterChange('${path}','${state}')" style="font-size:12px"><option value="">All severities</option>${severities.map(s=>`<option value="${s}">${s}</option>`).join('')}</select>
+      <label style="font-size:12px"><input id="rs-priv" type="checkbox" onchange="onReviewStateFilterChange('${path}','${state}')"> Private only</label>
+      <span style="margin-left:auto;font-size:11px;color:var(--muted)" id="rs-result-count"></span>
+    </div>
+  `;
+}
+
+// ───────────── Error Log (per-incident detail) ─────────────
+async function loadErrorLog(){
+  const list = document.getElementById('list-items');
+  const pane = document.getElementById('detail-pane');
+  list.innerHTML = '<div class="loading"><span class="spinner"></span>&nbsp; Loading errors…</div>';
+  pane.innerHTML = '<div class="empty-state"><div class="icon">⚠️</div><div>Select an error to see full detail.</div></div>';
+  document.getElementById('filter-bar').innerHTML = '';
+  try{
+    const r = await ghFile('Review/incidents.jsonl');
+    const text = new TextDecoder().decode(Uint8Array.from(atob(r.content.replace(/\n/g,'')), c => c.charCodeAt(0)));
+    const lines = text.trim().split('\n').filter(Boolean);
+    const incidents = lines.map(l => { try { return JSON.parse(l) } catch { return null } }).filter(Boolean);
+    // Most recent first
+    incidents.reverse();
+    document.getElementById('list-count').textContent = `${incidents.length} incidents`;
+    if(incidents.length === 0){
+      list.innerHTML = '<div class="empty-state">No incidents logged.</div>';
+      return;
+    }
+    const sevColor = {error:'#B52025', warn:'#CCBE6D', critical:'#9C2030', info:'#3BA9D0'};
+    list.innerHTML = incidents.map((inc, i) => `
+      <div class="list-item" onclick="openErrorDetail(${i})" id="err-li-${i}">
+        <div class="list-item-title">${escapeHtml(inc.message || inc.id || 'Untitled')}</div>
+        <div class="list-item-meta">
+          <span style="display:inline-block;padding:1px 6px;border-radius:8px;background:${sevColor[inc.severity]||'#888'};color:#fff;font-size:10px">${inc.severity||'?'}</span>
+          <span style="color:var(--muted);font-size:11px">${escapeHtml(inc.system || inc.source || '?')} · ${escapeHtml(inc.automation || inc.category || '?')}</span>
+          <span style="color:var(--muted);font-size:11px;margin-left:auto">${(inc.ts || '').slice(0, 19)}</span>
+        </div>
+      </div>
+    `).join('');
+    window.__ERROR_LOG_CACHE = incidents;
+  }catch(e){
+    list.innerHTML = `<div class="empty-state">Could not load incidents.jsonl: ${escapeHtml(e.message)}</div>`;
+  }
+}
+
+function openErrorDetail(idx){
+  const inc = (window.__ERROR_LOG_CACHE || [])[idx];
+  if(!inc) return;
+  const pane = document.getElementById('detail-pane');
+  const sevColor = {error:'#B52025', warn:'#CCBE6D', critical:'#9C2030', info:'#3BA9D0'};
+  pane.innerHTML = `
+    <div style="padding:12px 0 16px;border-bottom:1px solid var(--border);margin-bottom:14px">
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px">
+        <span style="display:inline-block;padding:2px 10px;border-radius:10px;background:${sevColor[inc.severity]||'#888'};color:#fff;font-size:11px;font-weight:600">${inc.severity||'?'}</span>
+        <span style="font-size:12px;color:var(--muted)">${escapeHtml(inc.category || '?')}</span>
+        <span style="font-size:11px;color:var(--muted);margin-left:auto">${escapeHtml(inc.ts || '')}</span>
+      </div>
+      <h2 style="margin:0;font-size:18px">${escapeHtml(inc.message || inc.id || '?')}</h2>
+    </div>
+    <table style="width:100%;border-collapse:collapse;font-size:13px">
+      <tr><td style="padding:4px 8px;color:var(--muted);width:120px">ID</td><td style="padding:4px 8px;font-family:monospace">${escapeHtml(inc.id || '?')}</td></tr>
+      <tr><td style="padding:4px 8px;color:var(--muted)">Source</td><td style="padding:4px 8px">${escapeHtml(inc.source || '?')}</td></tr>
+      ${inc.system ? `<tr><td style="padding:4px 8px;color:var(--muted)">System</td><td style="padding:4px 8px">${escapeHtml(inc.system)}</td></tr>` : ''}
+      ${inc.automation ? `<tr><td style="padding:4px 8px;color:var(--muted)">Automation</td><td style="padding:4px 8px">${escapeHtml(inc.automation)}</td></tr>` : ''}
+      <tr><td style="padding:4px 8px;color:var(--muted)">Status</td><td style="padding:4px 8px">${escapeHtml(inc.status || '?')}</td></tr>
+      <tr><td style="padding:4px 8px;color:var(--muted)">Attempts</td><td style="padding:4px 8px">${inc.attempts || 0}</td></tr>
+      ${inc.record_link ? `<tr><td style="padding:4px 8px;color:var(--muted)">Record</td><td style="padding:4px 8px">${escapeHtml(inc.record_link)}</td></tr>` : ''}
+      ${inc.source_url ? `<tr><td style="padding:4px 8px;color:var(--muted)">Source URL</td><td style="padding:4px 8px"><a href="${escapeAttr(inc.source_url)}" target="_blank">${escapeHtml(inc.source_url)}</a></td></tr>` : ''}
+      ${inc.resolution ? `<tr><td style="padding:4px 8px;color:var(--muted)">Resolution</td><td style="padding:4px 8px">${escapeHtml(inc.resolution)}</td></tr>` : ''}
+    </table>
+    ${inc.suggested_action ? `<h3 style="margin-top:18px;font-size:13px">Suggested fix</h3><div style="padding:8px 12px;background:var(--surface2);border-radius:6px;font-size:13px">${escapeHtml(inc.suggested_action)}</div>` : ''}
+    ${inc.context ? `<h3 style="margin-top:18px;font-size:13px">Context</h3><pre style="background:var(--surface2);padding:10px;border-radius:6px;font-size:11px;overflow-x:auto">${escapeHtml(JSON.stringify(inc.context, null, 2))}</pre>` : ''}
+  `;
+  document.querySelectorAll('[id^=err-li-]').forEach(el=>el.style.background='');
+  const sel = document.getElementById('err-li-'+idx);
+  if(sel) sel.style.background = 'var(--surface2)';
+}
 
 // ───────────── NEW 3-state Review system (queue / awaiting-fix / _archive) ─────────────
 let REVIEW_STATE_CACHE = {};  // path → array of items
@@ -3558,31 +3733,28 @@ async function refreshCounts(){
     document.getElementById('badge-people').textContent = peopleCount;
   }catch(e){}
 
-  // 3-state review system badges (Active / Awaiting Fix / Completed)
-  for(const [path, badgeId] of [
-    ['Review/queue','badge-review-active'],
-    ['Review/awaiting-fix','badge-review-awaiting'],
-    ['Review/_archive','badge-review-archive'],
-  ]){
-    try{
-      const dir = await gh(path);
-      const c = dir.filter(e=>e.type==='file'&&e.name.endsWith('.md')).length;
-      const el = document.getElementById(badgeId);
-      if(el) el.textContent = c;
-    }catch(e){
-      const el = document.getElementById(badgeId);
-      if(el) el.textContent = '0';
-    }
-  }
-  // Legacy "All Items" badge — keep showing the combined count for that tab
-  let total = peopleCount;
+  // Consolidated Review badge — count of Active + Awaiting Fix (Completed not counted)
+  let reviewActiveAwaiting = 0;
   for(const path of ['Review/queue','Review/awaiting-fix']){
     try{
       const dir = await gh(path);
-      total += dir.filter(e=>e.type==='file'&&e.name.endsWith('.md')).length;
+      reviewActiveAwaiting += dir.filter(e=>e.type==='file'&&e.name.endsWith('.md')).length;
     }catch(e){}
   }
-  document.getElementById('badge-review-all').textContent = total;
+  const reviewBadge = document.getElementById('badge-review');
+  if(reviewBadge) reviewBadge.textContent = reviewActiveAwaiting;
+
+  // Error Log badge — count incident.jsonl entries
+  try{
+    const r = await ghFile('Review/incidents.jsonl');
+    const text = new TextDecoder().decode(Uint8Array.from(atob(r.content.replace(/\n/g,'')), c => c.charCodeAt(0)));
+    const count = text.trim().split('\n').filter(Boolean).length;
+    const eb = document.getElementById('badge-error-log');
+    if(eb) eb.textContent = count;
+  }catch(e){
+    const eb = document.getElementById('badge-error-log');
+    if(eb) eb.textContent = '0';
+  }
 }
 
 function renderEmpty(msg){
