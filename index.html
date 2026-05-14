@@ -1461,19 +1461,23 @@ async function loadReviewAll(){
     });
   }catch(e){}
 
-  // 5. Unclassified meetings (Inbox/meetings)
-  try{
-    const dir = await gh('Inbox/meetings');
-    dir.filter(e=>e.type==='file'&&e.name.endsWith('.md')).forEach(f=>{
-      items.push({
-        source:'inbox', source_label:'Meeting',
-        title:f.name.replace(/\.md$/,''),
-        desc:'Unclassified meeting — pending reprocess routing',
-        action_target:{path:f.path},
-        ref:{kind:'inbox-meeting', path:f.path, title:f.name.replace(/\.md$/,'')}
+  // 5. NEW 3-state Review system: Review/queue (active) + Review/awaiting-fix (diagnosed)
+  for(const [path, label, statusTag] of [['Review/queue', 'Review', 'pending'], ['Review/awaiting-fix', 'Review', 'awaiting-fix']]){
+    try{
+      const dir = await gh(path);
+      dir.filter(e=>e.type==='file'&&e.name.endsWith('.md')).forEach(f=>{
+        items.push({
+          source:'review', source_label:label,
+          status: statusTag,
+          title:f.name.replace(/\.md$/,''),
+          desc:'Active review item — open file for full context + DECISION shortcuts',
+          action_target:{path:f.path},
+          ref:{kind:'review-item', path:f.path, title:f.name.replace(/\.md$/,'')}
+        });
       });
-    });
-  }catch(e){}
+    }catch(e){}
+  }
+  // (legacy Inbox/meetings count dropped 2026-05-13 — 253 stale files from old workflow 02; not actionable reviews)
 
   // 6. Policy review
   try{
@@ -3374,9 +3378,11 @@ async function refreshCounts(){
     document.getElementById('badge-people').textContent = peopleCount;
   }catch(e){}
 
-  // Unified Review tab badge — sum of pending items across sources (cheap dir lists)
+  // Unified Review tab badge — count active review items in the 3-state review system
+  // Only count Review/queue (pending) + Review/awaiting-fix (diagnosed but not yet applied)
+  // Do NOT count Review/_archive (resolved) or Inbox/meetings (legacy backlog, not reviews)
   let total = peopleCount;
-  for(const path of ['Help Docs/candidates','Documentation/candidates','Review/errors','Inbox/meetings','Review/policy-review']){
+  for(const path of ['Review/queue','Review/awaiting-fix']){
     try{
       const dir = await gh(path);
       total += dir.filter(e=>e.type==='file'&&e.name.endsWith('.md')).length;
